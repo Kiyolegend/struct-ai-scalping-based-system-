@@ -1,9 +1,9 @@
 ﻿STRUCT_API_BASE = "http://localhost:8001/trading-api"
 
-# â”€â”€ Active symbol (change this to switch which pair the engine scans) â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Active symbol (change this to switch which pair the engine scans) ─────────
 SYMBOL = "USD/JPY"
 
-# â”€â”€ Symbol table â€” pip sizes and MT5 names for each supported pair â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Symbol table — pip sizes and MT5 names for each supported pair ────────────
 # pip_size : value of 1 pip in price terms
 # mt5_name : exact symbol name in your MT5 Market Watch
 # digits   : decimal places shown on chart
@@ -28,7 +28,7 @@ def get_spread_pips(symbol: str = None) -> float:
     """Return the typical spread in pips for a symbol."""
     return SYMBOL_CONFIG.get(symbol or SYMBOL, SYMBOL_CONFIG["USD/JPY"]).get("spread_pips", 1.0)
 
-# â”€â”€ Symbols to scan every cycle (remove any you don't want) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Symbols to scan every cycle (remove any you don't want) ──────────────────
 SCAN_SYMBOLS = list(SYMBOL_CONFIG.keys())
 
 def get_symbol_cfg(symbol: str = None) -> dict:
@@ -55,8 +55,8 @@ TARGET_RR  = 2.0
 MAX_TRADES_PER_DAY = 3
 MAX_CONSECUTIVE_LOSSES = 2
 
-# â”€â”€ Minimum confidence score to fire a trade (both strategy-level and engine-level) â”€â”€
-# Signals scoring below this are completely suppressed â€” never reach the risk manager.
+# ── Minimum confidence score to fire a trade (both strategy-level and engine-level) ──
+# Signals scoring below this are completely suppressed — never reach the risk manager.
 # Raise this number to be more selective. 80 = high-quality setups only.
 MIN_CONFIDENCE = 80
 
@@ -66,14 +66,14 @@ SIMULATION_MODE = True
 
 NEAR_LEVEL_PIPS = 10
 PIP_SIZE = get_symbol_cfg()["pip_size"]
-# Minimum SL distance in pips â€” signals with a tighter stop are rejected.
+# Minimum SL distance in pips — signals with a tighter stop are rejected.
 # 7 = default (allows tight structural setups).
 # Raise to 10 if you're getting stopped out by noise on USDJPY during London.
 MIN_SL_PIPS = 7
 SL_BUFFER_PIPS = 5
-# Wider buffer for Strategy 2 sweeps â€” liquidity grabs routinely re-test the level
+# Wider buffer for Strategy 2 sweeps — liquidity grabs routinely re-test the level
 # (double-wick), so a 5-pip buffer often gets stopped out before the real reversal.
 SWEEP_SL_BUFFER_PIPS = 8
 # Minimum pips price must have recovered beyond the sweep level before entry is valid.
-# Filters dead-cat bounces where the recovery is only 1â€“2 ticks.
-MIN_SWEEP_RECOVERY_PIPS = 3
+# Filters dead-cat bounces where the recovery is only 1-2 ticks.
+MIN_SWEEP_RECOVERY_PIPS = 5

@@ -195,8 +195,9 @@ def build_state(symbol: str = None) -> dict | None:
             "bos":       a1h.get("bos", []),
             "choch":     a1h.get("choch", []),
             "zones":     a1h.get("zones", []),
+            "candles":   a1h.get("candles", []),
         },
-                "4h": {
+        "4h": {
             "trend":     a4h.get("trend", {}).get("trend", "neutral"),
             "structure": a4h.get("structure_labels", []),
             "bos":       a4h.get("bos", []),

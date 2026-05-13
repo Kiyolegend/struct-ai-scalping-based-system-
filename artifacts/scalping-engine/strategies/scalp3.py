@@ -147,7 +147,6 @@ def detect_order_blocks(candles: list, current_price: float, symbol: str = "") -
 # ─────────────────────────────────────────────────────────────────────────────
 
 def detect_fvgs(candles: list, current_price: float, symbol: str = "") -> list:
-    pip = config.get_symbol_cfg(symbol)["pip_size"]
     """
     Detect unmitigated Fair Value Gaps in a candle list.
     Returns list of dicts: {type, top, bottom}
@@ -160,7 +159,7 @@ def detect_fvgs(candles: list, current_price: float, symbol: str = "") -> list:
     if n < 3:
         return []
 
-    pip       = config.get_symbol_cfg()["pip_size"]
+    pip       = config.get_symbol_cfg(symbol)["pip_size"]
     min_gap   = 3 * pip
     proximity = 0.01
 
@@ -259,12 +258,13 @@ def check(state: dict, debug: bool = False) -> dict | None:
         align_score = 15
 
     trade_type = "BUY" if direction == "bullish" else "SELL"
-    pip        = config.get_symbol_cfg(state.get("symbol"))["pip_size"]
+    symbol     = state.get("symbol", "")
+    pip        = config.get_symbol_cfg(symbol)["pip_size"]
     now_sec    = int(_time.time())
 
     # ── Step 2: 1H unmitigated OB in bias direction (within 48h) ─────────
     obs_1h = [
-        ob for ob in detect_order_blocks(candles_1h, price,state.get("symbol", ""))
+        ob for ob in detect_order_blocks(candles_1h, price, symbol)
         if ob["type"] == ("bullish" if direction == "bullish" else "bearish")
         and (now_sec - ob.get("time", 0)) <= 48 * 3600
     ]
@@ -281,7 +281,7 @@ def check(state: dict, debug: bool = False) -> dict | None:
     ob4h_label = ""
     if candles_4h:
         obs_4h = [
-            o for o in detect_order_blocks(candles_4h, price,state.get("symbol", ""))
+            o for o in detect_order_blocks(candles_4h, price, symbol)
             if o["type"] == ("bullish" if direction == "bullish" else "bearish")
         ]
         if obs_4h:
@@ -296,7 +296,7 @@ def check(state: dict, debug: bool = False) -> dict | None:
     fvg_label = ""
     if candles_5m:
         fvgs_5m = [
-            f for f in detect_fvgs(candles_5m, price)
+            f for f in detect_fvgs(candles_5m, price, symbol)
             if f["type"] == ("bullish" if direction == "bullish" else "bearish")
         ]
         if fvgs_5m:
@@ -395,7 +395,7 @@ def check(state: dict, debug: bool = False) -> dict | None:
         if debug: print(f"    [S3] skip: score {total_score} < 75 minimum")
         return None
 
-       # ── SL / TP — SL beyond OB edge ─────────────────────────────────────
+    # ── SL / TP — SL beyond OB edge ──────────────────────────────────────
     buf = config.SL_BUFFER_PIPS * pip
 
     if direction == "bullish":
