@@ -88,8 +88,9 @@ session_stats = {
 signal_memory = SignalMemory()
 
 # ── Trade Journal (persistent JSON) ──────────────────────────────────────────
-JOURNAL_FILE = os.path.join(os.path.dirname(__file__), "journal.json")
-journal_lock = threading.Lock()
+JOURNAL_FILE  = os.path.join(os.path.dirname(__file__), "journal.json")
+SETTINGS_FILE = os.path.join(os.path.dirname(__file__), "settings.json")
+journal_lock  = threading.Lock()
 
 
 def _load_journal() -> list:
@@ -157,7 +158,43 @@ def _add_to_journal(decision: dict, lot: float, mode: str) -> None:
         entries.insert(0, entry)   # newest first
         _save_journal(entries)
 
+def _load_settings() -> None:
+    """Load saved risk settings from disk and apply to config on startup."""
+    try:
+        if os.path.exists(SETTINGS_FILE):
+            with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
+                s = json.load(f)
+            if "target_rr"               in s: config.TARGET_RR               = float(s["target_rr"])
+            if "default_lot"             in s: config.DEFAULT_LOT             = float(s["default_lot"])
+            if "min_sl_pips"             in s: config.MIN_SL_PIPS             = int(s["min_sl_pips"])
+            if "sl_buffer_pips"          in s: config.SL_BUFFER_PIPS          = int(s["sl_buffer_pips"])
+            if "sweep_sl_buffer_pips"    in s: config.SWEEP_SL_BUFFER_PIPS    = int(s["sweep_sl_buffer_pips"])
+            if "min_sweep_recovery_pips" in s: config.MIN_SWEEP_RECOVERY_PIPS = int(s["min_sweep_recovery_pips"])
+            if "net_min_rr"              in s: config.NET_MIN_RR              = float(s["net_min_rr"])
+            if "min_confidence"          in s: config.MIN_CONFIDENCE          = int(s["min_confidence"])
+            if "max_trades_per_day"      in s: config.MAX_TRADES_PER_DAY      = int(s["max_trades_per_day"])
+            print(f"[SETTINGS] Restored saved settings from {SETTINGS_FILE}")
+    except Exception as e:
+        print(f"[SETTINGS] Could not load settings: {e}")
 
+
+def _save_settings() -> None:
+    """Persist current risk settings to disk so they survive restarts."""
+    try:
+        with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
+            json.dump({
+                "target_rr":               config.TARGET_RR,
+                "default_lot":             config.DEFAULT_LOT,
+                "min_sl_pips":             config.MIN_SL_PIPS,
+                "sl_buffer_pips":          config.SL_BUFFER_PIPS,
+                "sweep_sl_buffer_pips":    config.SWEEP_SL_BUFFER_PIPS,
+                "min_sweep_recovery_pips": config.MIN_SWEEP_RECOVERY_PIPS,
+                "net_min_rr":              config.NET_MIN_RR,
+                "min_confidence":          config.MIN_CONFIDENCE,
+                "max_trades_per_day":      config.MAX_TRADES_PER_DAY,
+            }, f, indent=2)
+    except Exception as e:
+        print(f"[SETTINGS] Save error: {e}")
 def _reset_daily_stats_if_needed():
     today = datetime.now(timezone.utc).date()
     if session_stats["last_reset_date"] != today:
@@ -497,9 +534,10 @@ def update_settings():
     if "min_confidence" in data:
         config.MIN_CONFIDENCE = int(_clamp(int(data["min_confidence"]), 50, 100))
 
-    if "max_trades_per_day" in data:
-        config.MAX_TRADES_PER_DAY = int(_clamp(int(data["max_trades_per_day"]), 1, 10))
+        if "max_trades_per_day" in data:
+         config.MAX_TRADES_PER_DAY = int(_clamp(int(data["max_trades_per_day"]), 1, 10))
 
+    _save_settings()
     return jsonify({
         "ok":                      True,
         "target_rr":               config.TARGET_RR,
@@ -702,6 +740,7 @@ def api_backtest():
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 def main():
+    _load_settings()
     use_sim = config.SIMULATION_MODE or SIM_FORCE
 
     print("=" * 68)

@@ -80,7 +80,7 @@ def sanitize_state(state: dict) -> dict | None:
         "15m": bias.get("15m") or "neutral",
     }
 
-    for tf in ("1m", "5m", "15m", "1h"):
+    for tf in ("1m", "5m", "15m", "1h", "4h"):
         tf_data = state.get(tf) or {}
         state[tf] = {
             "trend":     tf_data.get("trend")     or "neutral",
@@ -125,9 +125,10 @@ def build_state(symbol: str = None) -> dict | None:
     a5m  = _analysis("5m",  300, sym)
     a15m = _analysis("15m", 150, sym)
     a1h  = _analysis("1h",  150, sym)
+    a4h  = _analysis("4h",  100, sym)
     sr   = _get("sr-levels", {"symbol": sym, "outputsize": 300})
 
-    if not all([bias, a5m, a15m, a1h, sr]):
+    if not all([bias, a5m, a15m, a1h, a4h, sr]):
         print("FAILED")
         return None
 
@@ -194,6 +195,14 @@ def build_state(symbol: str = None) -> dict | None:
             "bos":       a1h.get("bos", []),
             "choch":     a1h.get("choch", []),
             "zones":     a1h.get("zones", []),
+        },
+                "4h": {
+            "trend":     a4h.get("trend", {}).get("trend", "neutral"),
+            "structure": a4h.get("structure_labels", []),
+            "bos":       a4h.get("bos", []),
+            "choch":     a4h.get("choch", []),
+            "zones":     a4h.get("zones", []),
+            "candles":   a4h.get("candles", []),
         },
         "sr_levels": sr.get("levels", []),
         "asia_range": {"high": asia_high, "low": asia_low},

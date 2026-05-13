@@ -10,7 +10,7 @@ from .scalp5 import check as scalp5
 STRATEGIES = [
     ("MTF Pullback Precision Scalping", scalp1),
     ("Liquidity Sweep Reversal Scalping", scalp2),
-    ("SCALP_STRATEGY_3", scalp3),
+    ("ICT OB/FVG Zone Reaction", scalp3),
     ("SCALP_STRATEGY_4", scalp4),
     ("SCALP_STRATEGY_5", scalp5),
 ]
