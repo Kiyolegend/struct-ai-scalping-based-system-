@@ -281,6 +281,21 @@ def _scan_symbol(sym: str) -> tuple[dict | None, list, dict | None]:
                 if s["fired"] and s["score"] >= config.MIN_CONFIDENCE and not _asian_only
             ]
             signals.sort(key=lambda s: s["score"], reverse=True)
+                    # ── Directional conflict check ────────────────────────────────────
+        # If top two fired signals point in opposite directions, log the
+        # conflict and keep only signals that match the highest-confidence
+        # direction. Engine always takes the strongest signal.
+        if len(signals) >= 2:
+            top_dir    = signals[0].get("direction", "")
+            second_dir = signals[1].get("direction", "")
+            if top_dir and second_dir and top_dir != second_dir:
+                print(
+                    f"  [ENGINE] ⚠️  DIRECTION CONFLICT: "
+                    f"{signals[0]['name']}={top_dir}({signals[0]['score']}) "
+                    f"vs {signals[1]['name']}={second_dir}({signals[1]['score']}) "
+                    f"— keeping {signals[0]['name']} only"
+                )
+                signals = [s for s in signals if s.get("direction", "") == top_dir]
 
         decision = None
         if signals:

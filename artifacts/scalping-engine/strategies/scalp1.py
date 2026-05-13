@@ -148,7 +148,7 @@ def check(state: dict, debug: bool = False) -> dict | None:
         b for b in bos_5m[-6:]
         if isinstance(b, dict)
         and b.get("direction") == direction
-        and (now_sec - b.get("time", now_sec)) <= 3600
+        and (now_sec - b.get("time", now_sec)) <= 2 * 3600
     ]
 
     if not matching_bos:

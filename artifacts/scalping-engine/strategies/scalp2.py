@@ -4,11 +4,24 @@ Strategy 2 — Liquidity Sweep Reversal Scalping
 Exploit liquidity grabs (fake breakouts) where price sweeps previous
 highs/lows, traps traders, then reverses.
 
-Session 2 fixes applied:
-  - 12h staleness guard on sweep events
-  - Minimum recovery raised to 5 pips (was 3)
-  - 1h freshness check on 5M reversal confirmation
-  - Sweep selection: time-based tie-break (most recent wins)
+Tightening applied (post Session 2):
+  - BOS + BOS combo rejected — at least one CHOCH required on either
+    the sweep or the 5M confirmation (raises minimum quality floor).
+  - Sweep freshness bonus: sweeps within 4h score +5 extra pts.
+  - BOS sweeps require London/NY session — no session = no BOS sweep entry.
+  - BOS sweeps require 7-pip minimum recovery (vs 5 pip for CHOCH sweeps).
+  - Staleness window: 24h (was 12h — reverted to allow signals).
+
+Scoring (max 105):
+  Sweep quality   — 25 (CHOCH) or 10 (BOS) — BOS+BOS combo rejected
+  Reversal confirm — 25 (5M CHoCH) or 10 (5M BOS)
+  Market condition — 15 (ranging) or 5 (slight trend)
+  Entry precision  — 15 (≤5p) / 10 (≤15p) / 5 (>15p from sweep)
+  Zone confluence  — 10
+  Session timing   — 10
+  Freshness bonus  — 5 (sweep within 4h)
+
+  Minimum to fire  : 80
 """
 
 import sys, os, math, time as _time
@@ -42,23 +55,27 @@ def check(state: dict, debug: bool = False) -> dict | None:
     if not price or not isinstance(price, (int, float)) or not math.isfinite(price):
         return None
 
+    now_sec = int(_time.time())
+
     # ── Step 1: Market condition — avoid strong trends ────────────────────
     b4h = bias.get("4h", "neutral")
     b1h = bias.get("1h", "neutral")
 
-    strongly_trending = (b4h == b1h) and b4h not in ("neutral",) and b4h != ""
-    slightly_trending = (b4h not in ("neutral", "") or b1h not in ("neutral", "")) and not strongly_trending
+    strongly_trending = (b4h == b1h) and b4h not in ("neutral", "")
+    slightly_trending = (
+        b4h not in ("neutral", "") or b1h not in ("neutral", "")
+    ) and not strongly_trending
 
     if strongly_trending:
-        if debug: print("    [S2] skip: market strongly trending — use S1")
+        if debug: print("    [S2] skip: strongly trending market — use S1")
         return None
 
     market_score = 15 if not slightly_trending else 5
 
-    # ── Step 2: Sweep detection on 15M with 12h staleness guard ──────────
-    SWEEP_MAX_AGE = 12 * 3600   # 12 hours
+    # ── Step 2: Sweep detection on 15M — 24h staleness window ────────────
+    SWEEP_MAX_AGE = 24 * 3600
 
-    bos_15m   = s15m.get("bos", [])
+    bos_15m   = s15m.get("bos",   [])
     choch_15m = s15m.get("choch", [])
 
     bearish_choch = _best_sweep(choch_15m, "direction", "bearish", SWEEP_MAX_AGE)
@@ -66,58 +83,69 @@ def check(state: dict, debug: bool = False) -> dict | None:
     bullish_choch = _best_sweep(choch_15m, "direction", "bullish", SWEEP_MAX_AGE)
     bullish_bos   = _best_sweep(bos_15m,   "direction", "bullish", SWEEP_MAX_AGE)
 
-    # Pick best sweep for each direction: CHOCH preferred, but if BOS is newer use it
     def _pick(choch_item, bos_item):
         if choch_item and bos_item:
-            # If BOS is significantly more recent (>12h newer), use BOS instead
             return choch_item if choch_item.get("time", 0) >= bos_item.get("time", 0) - 12 * 3600 else bos_item
         return choch_item or bos_item
 
     buy_sweep_item  = _pick(bearish_choch, bearish_bos)
     sell_sweep_item = _pick(bullish_choch, bullish_bos)
 
+    def _sweep_score(item, choch_list):
+        if item is None:
+            return 0
+        return 25 if item in choch_list else 10
+
+    buy_sweep_score  = _sweep_score(buy_sweep_item,  choch_15m)
+    sell_sweep_score = _sweep_score(sell_sweep_item, choch_15m)
+
     buy_sweep_price  = buy_sweep_item.get("price")  if buy_sweep_item  else None
     sell_sweep_price = sell_sweep_item.get("price") if sell_sweep_item else None
 
-    buy_sweep_score  = (25 if buy_sweep_item  and buy_sweep_item.get("type",  "BOS") == "CHOCH" else 10) if buy_sweep_item  else 0
-    sell_sweep_score = (25 if sell_sweep_item and sell_sweep_item.get("type", "BOS") == "CHOCH" else 10) if sell_sweep_item else 0
-
-    # Fallback: infer score from which list it came from
-    if buy_sweep_item and buy_sweep_score == 10:
-        buy_sweep_score  = 25 if buy_sweep_item  in choch_15m else 10
-    if sell_sweep_item and sell_sweep_score == 10:
-        sell_sweep_score = 25 if sell_sweep_item in choch_15m else 10
-
-    # ── Step 3: Verify reversal — 5 pip minimum recovery ─────────────────
+    # ── Step 3: Verify reversal — minimum recovery check ─────────────────
     pip          = config.get_symbol_cfg(state.get("symbol"))["pip_size"]
     near_pips    = config.NEAR_LEVEL_PIPS
-    min_recovery = config.MIN_SWEEP_RECOVERY_PIPS * pip
+    base_recovery = config.MIN_SWEEP_RECOVERY_PIPS * pip   # 5 pips (CHOCH sweeps)
+    bos_recovery  = 7 * pip                                 # 7 pips (BOS sweeps — tighter)
 
     direction   = None
     trade_type  = None
     sweep_score = 0
     sweep_level = None
+    sweep_item  = None
+    is_choch_sweep = False
 
-    if buy_sweep_price is not None and (price - buy_sweep_price) >= min_recovery:
-        direction   = "bullish"
-        trade_type  = "BUY"
-        sweep_score = buy_sweep_score
-        sweep_level = buy_sweep_price
+    # Determine required recovery based on sweep quality
+    def _min_recovery(score):
+        return base_recovery if score == 25 else bos_recovery
 
-    if sell_sweep_price is not None and (sell_sweep_price - price) >= min_recovery:
-        if direction is None or sell_sweep_score > sweep_score:
-            direction   = "bearish"
-            trade_type  = "SELL"
-            sweep_score = sell_sweep_score
-            sweep_level = sell_sweep_price
+    if buy_sweep_price is not None:
+        rec = _min_recovery(buy_sweep_score)
+        if (price - buy_sweep_price) >= rec:
+            direction      = "bullish"
+            trade_type     = "BUY"
+            sweep_score    = buy_sweep_score
+            sweep_level    = buy_sweep_price
+            sweep_item     = buy_sweep_item
+            is_choch_sweep = (buy_sweep_score == 25)
+
+    if sell_sweep_price is not None:
+        rec = _min_recovery(sell_sweep_score)
+        if (sell_sweep_price - price) >= rec:
+            if direction is None or sell_sweep_score > sweep_score:
+                direction      = "bearish"
+                trade_type     = "SELL"
+                sweep_score    = sell_sweep_score
+                sweep_level    = sell_sweep_price
+                sweep_item     = sell_sweep_item
+                is_choch_sweep = (sell_sweep_score == 25)
 
     if direction is None:
-        if debug: print("    [S2] skip: no valid sweep with ≥5p recovery")
+        if debug: print("    [S2] skip: no valid sweep with sufficient recovery")
         return None
 
-    # ── Step 4: 5M reversal confirmation — with 1h freshness check ───────
-    now_sec  = int(_time.time())
-    bos_5m   = s5m.get("bos", [])
+    # ── Step 4: 5M reversal confirmation — within 1 hour ─────────────────
+    bos_5m   = s5m.get("bos",   [])
     choch_5m = s5m.get("choch", [])
 
     conf_choch = next(
@@ -132,11 +160,18 @@ def check(state: dict, debug: bool = False) -> dict | None:
     )
 
     if conf_choch:
-        reversal_score = 25
+        reversal_score  = 25
+        is_choch_confirm = True
     elif conf_bos:
-        reversal_score = 10
+        reversal_score  = 10
+        is_choch_confirm = False
     else:
         if debug: print(f"    [S2] skip: no {direction} CHoCH/BOS on 5M within 1h")
+        return None
+
+    # ── Quality gate: reject BOS sweep + BOS confirmation (lowest grade) ─
+    if not is_choch_sweep and not is_choch_confirm:
+        if debug: print("    [S2] skip: BOS sweep + BOS confirm only — need at least one CHoCH")
         return None
 
     # ── Step 5: Entry precision ───────────────────────────────────────────
@@ -155,7 +190,7 @@ def check(state: dict, debug: bool = False) -> dict | None:
         precision_score = 5
 
     # ── Step 6: Zone confluence ───────────────────────────────────────────
-    zones_5m  = s5m.get("zones") or []
+    zones_5m  = s5m.get("zones")  or []
     zones_15m = s15m.get("zones") or []
     if not isinstance(zones_5m,  list): zones_5m  = []
     if not isinstance(zones_15m, list): zones_15m = []
@@ -164,7 +199,7 @@ def check(state: dict, debug: bool = False) -> dict | None:
     zone_ok = False
     for zone in zones_5m + zones_15m:
         if not isinstance(zone, dict): continue
-        top    = zone.get("top") or 0
+        top    = zone.get("top")    or 0
         bottom = zone.get("bottom") or 0
         if top == 0 and bottom == 0: continue
         center = zone.get("center", (top + bottom) / 2)
@@ -176,23 +211,34 @@ def check(state: dict, debug: bool = False) -> dict | None:
 
     zone_score = 10 if zone_ok else 0
 
-    # ── Step 7: Session timing ────────────────────────────────────────────
+    # ── Step 7: Session timing + BOS sweep session gate ──────────────────
     sessions       = state.get("sessions", [])
     sessions_lower = [s.lower() for s in sessions]
+    in_active_session = any(s in sessions_lower for s in ["london", "ny", "new york"])
 
-    if any(s in sessions_lower for s in ["london", "ny", "new york"]):
-        session_score = 10
-    elif "asia" in sessions_lower or "asian" in sessions_lower:
-        session_score = 0
-    else:
-        session_score = 0
+    # BOS sweeps (lower quality) require an active session
+    if not is_choch_sweep and not in_active_session:
+        if debug: print("    [S2] skip: BOS sweep outside London/NY — CHOCH sweeps only in Asia")
+        return None
+
+    session_score = 10 if in_active_session else 0
+
+    # ── Step 8: Sweep freshness bonus ─────────────────────────────────────
+    sweep_age_secs = now_sec - sweep_item.get("time", now_sec) if sweep_item else 99999
+    freshness_bonus = 5 if sweep_age_secs <= 4 * 3600 else 0
+
+    if debug and freshness_bonus:
+        print(f"    [S2] fresh sweep ({sweep_age_secs//3600}h old) → +5 bonus")
 
     # ── Total score ───────────────────────────────────────────────────────
-    total_score = sweep_score + reversal_score + market_score + precision_score + zone_score + session_score
+    total_score = (sweep_score + reversal_score + market_score +
+                   precision_score + zone_score + session_score + freshness_bonus)
 
     if debug:
-        print(f"    [S2] {direction} | sweep={sweep_score} rev={reversal_score} mkt={market_score} "
-              f"prec={precision_score} zone={zone_score} sess={session_score} → {total_score}")
+        print(f"    [S2] {direction} | sweep={sweep_score}({'CHoCH' if is_choch_sweep else 'BOS'}) "
+              f"rev={reversal_score}({'CHoCH' if is_choch_confirm else 'BOS'}) "
+              f"mkt={market_score} prec={precision_score} "
+              f"zone={zone_score} sess={session_score} fresh={freshness_bonus} → {total_score}")
 
     if total_score < config.MIN_CONFIDENCE:
         if debug: print(f"    [S2] skip: score {total_score} < {config.MIN_CONFIDENCE}")
@@ -213,7 +259,8 @@ def check(state: dict, debug: bool = False) -> dict | None:
             return None
 
     sl_dist = abs(price - sl)
-    tp      = (price + sl_dist * config.TARGET_RR) if direction == "bullish" else (price - sl_dist * config.TARGET_RR)
+    tp      = (price + sl_dist * config.TARGET_RR) if direction == "bullish" \
+              else (price - sl_dist * config.TARGET_RR)
     rr      = round(config.TARGET_RR, 2)
     sl      = round(sl, 5)
     tp      = round(tp, 5)
@@ -230,19 +277,19 @@ def check(state: dict, debug: bool = False) -> dict | None:
         return None
 
     candles_5m_raw = s5m.get("candles", [])
-    body_threshold = 0.50 if conf_choch else 0.70
+    body_threshold = 0.50 if is_choch_confirm else 0.70
     reversal_ok    = False
     for c in reversed(candles_5m_raw[-6:]):
-        o_ = c.get("open", 0); h_ = c.get("high", 0)
-        l_ = c.get("low",  0); cl_= c.get("close", 0)
+        o_  = c.get("open",  0); h_ = c.get("high",  0)
+        l_  = c.get("low",   0); cl_= c.get("close", 0)
         if (cl_ > o_) if direction == "bullish" else (cl_ < o_):
             rng = h_ - l_; body = abs(cl_ - o_)
             if rng > 0 and (body / rng) >= body_threshold:
                 reversal_ok = True; break
 
     if not reversal_ok:
-        qual = "CHoCH-mild(50%)" if conf_choch else "BOS-displacement(70%)"
-        print(f"    [S2] REJECTED: weak reversal candle ({qual})")
+        qual = f"CHoCH body≥50%" if is_choch_confirm else "BOS body≥70%"
+        print(f"    [S2] REJECTED: no strong reversal candle ({qual} required)")
         return None
 
     if sl_dist < 7 * pip:
@@ -257,14 +304,17 @@ def check(state: dict, debug: bool = False) -> dict | None:
         print(f"    [S2] REJECTED: net RR {net_rr} < {config.NET_MIN_RR}")
         return None
 
-    sweep_type    = "CHoCH" if sweep_score == 25 else "BOS"
-    reversal_type = "CHoCH" if reversal_score == 25 else "BOS"
+    sweep_type    = "CHoCH" if is_choch_sweep   else "BOS"
+    reversal_type = "CHoCH" if is_choch_confirm else "BOS"
     mkt_desc      = "range" if market_score == 15 else "slight-trend"
-    reason        = (
-        f"15M sweep={direction}({sweep_type}) @ {sweep_level:.5f} | "
+    sweep_age_h   = round(sweep_age_secs / 3600, 1)
+
+    reason = (
+        f"15M sweep={direction}({sweep_type}) @ {sweep_level:.5f} age={sweep_age_h}h | "
         f"5M confirm={reversal_type} | mkt={mkt_desc} | "
         f"dist={dist_pips_sw:.1f}p prec={precision_score}pts | "
-        f"zone={'✓' if zone_ok else '✗'} sess={sessions} | "
+        f"zone={'✓' if zone_ok else '✗'} fresh={'✓' if freshness_bonus else '✗'} "
+        f"sess={sessions} | "
         f"spread={spread_pips}pip netRR={net_rr} score={total_score}/100"
     )
 

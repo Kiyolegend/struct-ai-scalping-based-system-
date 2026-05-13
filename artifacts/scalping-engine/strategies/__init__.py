@@ -11,6 +11,6 @@ STRATEGIES = [
     ("MTF Pullback Precision Scalping", scalp1),
     ("Liquidity Sweep Reversal Scalping", scalp2),
     ("ICT OB/FVG Zone Reaction", scalp3),
-    ("SCALP_STRATEGY_4", scalp4),
-    ("SCALP_STRATEGY_5", scalp5),
+    ("Volatility Compression Breakout", scalp4),
+    ("Session Open Momentum Scalp", scalp5),
 ]
