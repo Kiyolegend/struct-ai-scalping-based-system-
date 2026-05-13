@@ -10,7 +10,7 @@ Timeframe logic:
   4H       — OB stacking bonus (confluence)
   5M       — FVG detection + entry confirmation (CHoCH/BOS)
 
-Scoring breakdown (max ~100):
+Scoring breakdown (max ~115):
   HTF alignment        — up to 15  (4H+1H agree=15, 4H only=8, conflict=reject)
   1H OB found          — 25        (unmitigated OB in bias direction)
   4H OB stacking       — 15        (4H OB overlaps 1H OB — institutional confluence)
@@ -440,7 +440,7 @@ def check(state: dict, debug: bool = False) -> dict | None:
         f"{in_str} {ob_desc} [{ob['bottom']:.5f}-{ob['top']:.5f}]{fvg_label} | "
         f"5M {confirm_type} | 4H={b4h} 1H={b1h} | "
         f"sess={sessions} | spread={spread_pips}pip netRR={net_rr} | "
-        f"score={total_score}/100"
+        f"score={total_score}/115"
     )
 
     return {

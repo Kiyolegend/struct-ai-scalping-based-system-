@@ -4,7 +4,7 @@ STRUCT.ai Scalping Engine — Dashboard Server
 Runs the scalping engine in a background thread and serves a live
 browser dashboard on http://localhost:<PORT>
 
-Execution TF : 1M / 5M
+Execution TF :  5M
 Confirmation : 15M
 Bias         : 1H / 4H
 """
@@ -748,7 +748,7 @@ def main():
     print(f"  Dashboard : http://localhost:{PORT}")
     print(f"  API       : {config.STRUCT_API_BASE}")
     print(f"  Scanning  : {len(config.SCAN_SYMBOLS)} symbols — {', '.join(config.SCAN_SYMBOLS)}")
-    print(f"  Exec TF   : 1M / 5M")
+    print(f"  Exec TF   :  5M")
     print(f"  Confirm TF: 15M")
     print(f"  Bias TF   : 1H / 4H")
     print("=" * 68)

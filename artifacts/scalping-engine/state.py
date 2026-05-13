@@ -2,7 +2,7 @@
 State Builder — fetches all data from STRUCT.ai and builds a unified snapshot.
 
 Scalping edition: fetches 5M (execution TF) + 15M (confirmation) + 1H/4H (bias).
-Attempts to fetch 1M data if available; falls back gracefully if not.
+
 """
 
 import requests
@@ -80,7 +80,7 @@ def sanitize_state(state: dict) -> dict | None:
         "15m": bias.get("15m") or "neutral",
     }
 
-    for tf in ("1m", "5m", "15m", "1h", "4h"):
+    for tf in ( "5m", "15m", "1h", "4h"):
         tf_data = state.get(tf) or {}
         state[tf] = {
             "trend":     tf_data.get("trend")     or "neutral",
@@ -143,7 +143,7 @@ def build_state(symbol: str = None) -> dict | None:
         return None
 
     # 1M is optional — fetch best-effort
-    a1m = _analysis("1m", 100)
+    
 
     sessions      = get_active_sessions()
     asia_high, asia_low = _get_asia_range(candles_5m)
@@ -154,7 +154,7 @@ def build_state(symbol: str = None) -> dict | None:
 
     print(f"OK  [price={current_price:.3f}  sessions={sessions}  bias=4H:{bias_4h}/1H:{bias_1h}/15M:{bias_15m}]")
 
-    candles_1m = (a1m or {}).get("candles", [])
+    
 
     return sanitize_state({
         "symbol":         sym,
@@ -166,14 +166,7 @@ def build_state(symbol: str = None) -> dict | None:
             "1h":  bias_1h,
             "4h":  bias_4h,
         },
-        "1m": {
-            "trend":     (a1m or {}).get("trend", {}).get("trend", "neutral"),
-            "structure": (a1m or {}).get("structure_labels", []),
-            "bos":       (a1m or {}).get("bos", []),
-            "choch":     (a1m or {}).get("choch", []),
-            "zones":     (a1m or {}).get("zones", []),
-            "candles":   candles_1m,
-        },
+        
         "5m": {
             "trend":     a5m.get("trend", {}).get("trend", "neutral"),
             "structure": a5m.get("structure_labels", []),
