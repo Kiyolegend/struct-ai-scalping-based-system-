@@ -161,7 +161,7 @@ def detect_fvgs(candles: list, current_price: float, symbol: str = "") -> list:
 
     pip       = config.get_symbol_cfg(symbol)["pip_size"]
     min_gap   = 3 * pip
-    proximity = 0.01
+    proximity = min(0.01, (100 * pip) / current_price)
 
     results = []
 
@@ -176,7 +176,7 @@ def detect_fvgs(candles: list, current_price: float, symbol: str = "") -> list:
             center = (b_top + b_bottom) / 2
             dist   = abs(center - current_price) / current_price
             if dist <= proximity:
-                mitigated = any(fc["low"] <= b_bottom for fc in candles[i + 1:])
+                mitigated = any(fc["low"] <= b_top for fc in candles[i + 1:])
                 if not mitigated:
                     results.append({
                         "type": "bullish",
@@ -192,7 +192,7 @@ def detect_fvgs(candles: list, current_price: float, symbol: str = "") -> list:
             center = (d_top + d_bottom) / 2
             dist   = abs(center - current_price) / current_price
             if dist <= proximity:
-                mitigated = any(fc["high"] >= d_top for fc in candles[i + 1:])
+                mitigated = any(fc["high"] >= d_bottom for fc in candles[i + 1:])
                 if not mitigated:
                     results.append({
                         "type": "bearish",

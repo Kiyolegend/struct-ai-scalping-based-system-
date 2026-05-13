@@ -533,9 +533,8 @@ def update_settings():
 
     if "min_confidence" in data:
         config.MIN_CONFIDENCE = int(_clamp(int(data["min_confidence"]), 50, 100))
-
-        if "max_trades_per_day" in data:
-         config.MAX_TRADES_PER_DAY = int(_clamp(int(data["max_trades_per_day"]), 1, 10))
+    if "max_trades_per_day" in data:              # ← un-nested, aligned with the others
+        config.MAX_TRADES_PER_DAY = int(_clamp(int(data["max_trades_per_day"]), 1, 10))
 
     _save_settings()
     return jsonify({
