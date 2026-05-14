@@ -42,8 +42,9 @@ Guards added (ChatGPT feedback):
 
 import sys, os, math, time as _time
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-import config
+import config 
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -52,22 +53,26 @@ import config
 
 def _in_session_open_window() -> tuple[bool, str]:
     """
-    Returns (True, session_name) if current UTC time is within the first
-    90 minutes of London or NY open. Returns (False, '') otherwise.
+    Returns (True, session_name) if current time is within the first
+    90 minutes of London or NY open. DST-aware.
 
-    London open : 08:00 – 09:30 UTC
-    NY open     : 13:00 – 14:30 UTC
+    London open : 08:00 local (07:00 UTC in BST, 08:00 UTC in GMT)
+    NY open     : 08:00 local (12:00 UTC in EDT, 13:00 UTC in EST)
     """
     now_utc = datetime.now(timezone.utc)
     mins    = now_utc.hour * 60 + now_utc.minute
 
-    if 8 * 60 <= mins < 9 * 60 + 30:
+    lo = int(datetime.now(ZoneInfo("Europe/London")).utcoffset().total_seconds() // 3600)
+    ny = int(datetime.now(ZoneInfo("America/New_York")).utcoffset().total_seconds() // 3600)
+
+    lo_open = (8 - lo) * 60      # 07:00 UTC in BST, 08:00 UTC in GMT
+    ny_open = (8 - ny) * 60      # 12:00 UTC in EDT, 13:00 UTC in EST
+
+    if lo_open <= mins < lo_open + 90:
         return True, "London"
-    if 13 * 60 <= mins < 14 * 60 + 30:
+    if ny_open <= mins < ny_open + 90:
         return True, "NY"
-
     return False, ""
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Dead session volatility guard (ChatGPT feedback — volatility filter)
@@ -225,8 +230,7 @@ def check(state: dict, debug: bool = False) -> dict | None:
     in_window, window_name = _in_session_open_window()
 
     if not in_window:
-        if debug: print("    [S5] skip: not in London/NY open window (08:00-09:30 or 13:00-14:30 UTC)")
-        return None
+        if debug: print("    [S5] skip: not in London/NY open window (first 90 min of each session open)")
 
     session_score = 25
 
@@ -328,7 +332,7 @@ def check(state: dict, debug: bool = False) -> dict | None:
         print(f"    [S5] {direction} | sess={session_score} bias={bias_score} "
               f"align={alignment_bonus} bos={bos_score} level={level_score} "
               f"sweep={sweep_bonus} zone={zone_bonus} → {total_score}")
-    
+
         S5_MIN = 85
     if total_score < S5_MIN:
         if debug: print(f"    [S5] skip: score {total_score} < {S5_MIN}")

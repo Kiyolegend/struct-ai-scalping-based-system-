@@ -9,6 +9,7 @@ import requests
 from datetime import datetime, timezone
 import config
 from config import STRUCT_API_BASE
+from zoneinfo import ZoneInfo
 
 TIMEOUT = 12
 
@@ -30,13 +31,12 @@ def _analysis(interval: str, outputsize: int = 200, symbol: str = None) -> dict 
 def get_active_sessions() -> list[str]:
     """Returns list of currently active sessions based on UTC time."""
     hour = datetime.now(timezone.utc).hour
+    lo = int(datetime.now(ZoneInfo("Europe/London")).utcoffset().total_seconds() // 3600)
+    ny = int(datetime.now(ZoneInfo("America/New_York")).utcoffset().total_seconds() // 3600)
     sessions = []
-    if 0 <= hour < 9:
-        sessions.append("asian")
-    if 8 <= hour < 17:
-        sessions.append("london")
-    if 13 <= hour < 22:
-        sessions.append("ny")
+    if 0 <= hour < 9:                sessions.append("asian")
+    if (8 - lo) <= hour < (17 - lo): sessions.append("london")
+    if (8 - ny) <= hour < (17 - ny): sessions.append("ny")
     return sessions
 
 
@@ -100,7 +100,7 @@ def sanitize_state(state: dict) -> dict | None:
 
     if "sr_levels" not in state:
         state["sr_levels"] = []
-    if "sessions" not in state:
+    if not isinstance(state.get("sessions"), list):
         state["sessions"] = []
     if "tradeable_session" not in state:
         state["tradeable_session"] = False
