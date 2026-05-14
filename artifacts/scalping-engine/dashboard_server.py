@@ -476,6 +476,41 @@ def engine_loop():
 def index():
     return render_template("dashboard.html")
 
+@app.route('/api/heatmap')
+def heatmap():
+    short = {
+        "MTF Pullback Precision Scalping":  "S1 Pullback",
+        "Liquidity Sweep Reversal Scalping": "S2 Sweep",
+        "ICT OB/FVG Zone Reaction":          "S3 OB/FVG",
+        "Volatility Compression Breakout":   "S4 Compression",
+        "Session Open Momentum Scalp":       "S5 Session",
+    }
+    result = {}
+    for sym in config.SCAN_SYMBOLS:
+        result[sym] = {}
+        try:
+            state = build_state(sym)
+        except Exception:
+            for label in short.values():
+                result[sym][label] = {"score": 0, "direction": None, "error": True}
+            continue
+        for full_name, strategy_fn in STRATEGIES:
+            label = short.get(full_name, full_name)
+            try:
+                decision = strategy_fn(state)
+                if decision:
+                    result[sym][label] = {
+                        "score":     decision.get("confidence", 0),
+                        "direction": decision.get("type"),
+                        "error":     False,
+                    }
+                else:
+                    result[sym][label] = {"score": 0, "direction": None, "error": False}
+            except Exception:
+                result[sym][label] = {"score": 0, "direction": None, "error": False}
+    import time as _t
+    return jsonify({"heatmap": result, "timestamp": _t.time()})
+
 
 @app.route("/api/status")
 def api_status():

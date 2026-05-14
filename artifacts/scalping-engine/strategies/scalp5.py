@@ -253,7 +253,14 @@ def check(state: dict, debug: bool = False) -> dict | None:
     trade_type = "BUY" if direction == "bullish" else "SELL"
     bias_score = 20
 
-    alignment_bonus = 10 if b4h == b1h else 0
+    # Reject if 4H is actively opposing (not just non-aligning)
+    if b4h != "neutral" and b4h != direction:
+        if debug:
+            print(f"    [S5] skip: 4H {b4h} actively opposes {direction} — counter-HTF rejected")
+        return None
+
+    alignment_bonus = 10 if b4h == direction else 0
+
 
     if debug:
         print(f"    [S5] direction={direction} 1H={b1h} 4H={b4h} "
@@ -282,7 +289,7 @@ def check(state: dict, debug: bool = False) -> dict | None:
         b for b in bos_5m[-8:]
         if isinstance(b, dict)
         and b.get("direction") == direction
-        and (now_sec - b.get("time", now_sec)) <= 45 * 60
+        and (now_sec - b.get("time", now_sec)) <= 30 * 60
     ]
 
     if not fresh_bos:
@@ -295,7 +302,7 @@ def check(state: dict, debug: bool = False) -> dict | None:
         print(f"    [S5] fresh BOS: {len(fresh_bos)} event(s) within 45min")
 
     # ── Step 6: Near a key level ──────────────────────────────────────────
-    near_level = _near_key_level(price, state, pip, threshold_pips=20.0)
+    near_level = _near_key_level(price, state, pip, threshold_pips=15.0)
 
     if not near_level:
         if debug: print("    [S5] skip: price not within 20 pips of Asian range / S/R / zone")
@@ -321,6 +328,11 @@ def check(state: dict, debug: bool = False) -> dict | None:
         print(f"    [S5] {direction} | sess={session_score} bias={bias_score} "
               f"align={alignment_bonus} bos={bos_score} level={level_score} "
               f"sweep={sweep_bonus} zone={zone_bonus} → {total_score}")
+    
+        S5_MIN = 85
+    if total_score < S5_MIN:
+        if debug: print(f"    [S5] skip: score {total_score} < {S5_MIN}")
+        return None
 
     if total_score < config.MIN_CONFIDENCE:
         if debug: print(f"    [S5] skip: score {total_score} < {config.MIN_CONFIDENCE}")

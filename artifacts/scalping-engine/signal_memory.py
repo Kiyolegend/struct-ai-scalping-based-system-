@@ -1,7 +1,7 @@
 """
 Signal Memory — prevents the same trade setup firing multiple times per session.
 
-A setup is uniquely identified by (strategy, direction, SL rounded to 1 decimal).
+# A setup is uniquely identified by (strategy, direction, SL rounded to 5 decimal places).
 Once a trade fires, that key is locked until market structure changes:
   - 1H bias flips direction
   - SL level shifts (new structure creates a different SL)
@@ -19,7 +19,7 @@ class SignalMemory:
             decision.get("symbol", ""),
             decision.get("strategy", ""),
             decision.get("type", ""),
-            round(decision.get("sl", 0), 1),
+            round(decision.get("sl", 0), 5),
         )
 
     def is_duplicate(self, decision: dict, state: dict) -> bool:

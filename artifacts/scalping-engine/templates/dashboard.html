@@ -1666,5 +1666,73 @@
     loadJournal();
   }
 </script>
+<div id="heatmap-section" style="margin:20px 0;padding:16px;background:#0d1117;border:1px solid #21262d;border-radius:8px;">
+  <h3 style="color:#8b949e;font-size:11px;letter-spacing:0.12em;text-transform:uppercase;margin:0 0 12px 0;">
+    Live Setup Heatmap — 8 Pairs × 5 Strategies
+  </h3>
+  <div id="heatmap-grid" style="overflow-x:auto;">
+    <table id="heatmap-table" style="border-collapse:collapse;width:100%;font-size:10px;font-family:monospace;">
+    </table>
+  </div>
+</div>
+
+<script>
+function heatmapColor(score, direction) {
+  if (score === 0) return '#0d1117';
+  if (score >= 90) return direction === 'BUY' ? '#0d4429' : '#4a1020';
+  if (score >= 80) return direction === 'BUY' ? '#0a3020' : '#3d0e1a';
+  if (score >= 70) return direction === 'BUY' ? '#071e14' : '#2a0a12';
+  if (score >= 60) return '#1a1a0a';
+  return '#111111';
+}
+
+function heatmapTextColor(score) {
+  if (score >= 90) return '#3fb950';
+  if (score >= 80) return '#58a6ff';
+  if (score >= 70) return '#fbbf24';
+  if (score >= 60) return '#6b7280';
+  return '#374151';
+}
+
+async function refreshHeatmap() {
+  try {
+    const res  = await fetch('/api/heatmap');
+    const data = await res.json();
+    const grid = data.heatmap;
+
+    const strategies = ['S1 Pullback','S2 Sweep','S3 OB/FVG','S4 Compression','S5 Session'];
+    const symbols    = Object.keys(grid);
+
+    let html = '<thead><tr>';
+    html += '<th style="padding:6px 10px;color:#4b5563;text-align:left;border-bottom:1px solid #21262d;">PAIR</th>';
+    strategies.forEach(s => {
+      html += `<th style="padding:6px 8px;color:#4b5563;text-align:center;border-bottom:1px solid #21262d;">${s}</th>`;
+    });
+    html += '</tr></thead><tbody>';
+
+    symbols.forEach(sym => {
+      html += `<tr><td style="padding:5px 10px;color:#8b949e;font-weight:700;border-bottom:1px solid #161b22;">${sym}</td>`;
+      strategies.forEach(strat => {
+        const cell  = grid[sym][strat] || {score:0, direction:null};
+        const score = cell.score || 0;
+        const dir   = cell.direction;
+        const bg    = heatmapColor(score, dir);
+        const color = heatmapTextColor(score);
+        const label = score >= 60 ? `${score}<span style="font-size:8px;color:#4b5563;">${dir === 'BUY' ? '▲' : dir === 'SELL' ? '▼' : ''}</span>` : '·';
+        html += `<td style="padding:5px 8px;text-align:center;background:${bg};color:${color};border:1px solid #161b22;font-weight:${score>=80?700:400};">${label}</td>`;
+      });
+      html += '</tr>';
+    });
+
+    html += '</tbody>';
+    document.getElementById('heatmap-table').innerHTML = html;
+  } catch(e) {
+    console.error('Heatmap error', e);
+  }
+}
+
+refreshHeatmap();
+setInterval(refreshHeatmap, 30000);
+</script>
 </body>
 </html>
