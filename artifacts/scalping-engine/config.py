@@ -60,7 +60,7 @@ MAX_CONSECUTIVE_LOSSES = 2
 # Raise this number to be more selective. 80 = high-quality setups only.
 MIN_CONFIDENCE = 80
 
-LOOP_INTERVAL = 30
+LOOP_INTERVAL = 12
 
 SIMULATION_MODE = True
 

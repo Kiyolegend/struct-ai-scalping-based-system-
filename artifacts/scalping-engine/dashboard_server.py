@@ -14,6 +14,7 @@ import sys
 import json
 import uuid
 import threading
+from concurrent.futures import ThreadPoolExecutor
 import time
 import webbrowser
 from datetime import datetime, timezone
@@ -251,22 +252,19 @@ def _scan_symbol(sym: str) -> tuple[dict | None, list, dict | None]:
         return None, [], None   # symbol disabled — skip entirely
 
     cfg = config.get_symbol_cfg(sym)
-    original_pip  = config.PIP_SIZE
-    original_sym  = config.SYMBOL
-    config.PIP_SIZE = cfg["pip_size"]
-    config.SYMBOL   = sym
+    
 
-    try:
-        market_state = build_state(sym)
-        if market_state is None:
+    
+    market_state = build_state(sym)
+    if market_state is None:
             return None, [], None
 
-        strategy_scores = _score_all_strategies(market_state)
+    strategy_scores = _score_all_strategies(market_state)
 
-        _sessions   = market_state.get("sessions", [])
-        _asian_only = "asian" in _sessions and "london" not in _sessions and "ny" not in _sessions
+    _sessions   = market_state.get("sessions", [])
+    asian_only = "asian" in _sessions and "london" not in _sessions and "ny" not in _sessions
 
-        if force_fire:
+    if force_fire:
             # Force-fire: take the highest-scoring strategy regardless of threshold/session
             signals = sorted(
                 [s for s in strategy_scores if s["fired"]],
@@ -275,17 +273,17 @@ def _scan_symbol(sym: str) -> tuple[dict | None, list, dict | None]:
             if not signals:
                 # Even if no strategy "fired", take the one with highest score
                 signals = sorted(strategy_scores, key=lambda s: s["score"], reverse=True)
-        else:
+    else:
             signals = [
                 s for s in strategy_scores
-                if s["fired"] and s["score"] >= config.MIN_CONFIDENCE and not _asian_only
+                if s["fired"] and s["score"] >= config.MIN_CONFIDENCE and not asian_only
             ]
             signals.sort(key=lambda s: s["score"], reverse=True)
                     # ── Directional conflict check ────────────────────────────────────
         # If top two fired signals point in opposite directions, log the
         # conflict and keep only signals that match the highest-confidence
         # direction. Engine always takes the strongest signal.
-        if len(signals) >= 2:
+    if len(signals) >= 2:
             top_dir    = signals[0].get("direction", "")
             second_dir = signals[1].get("direction", "")
             if top_dir and second_dir and top_dir != second_dir:
@@ -297,8 +295,8 @@ def _scan_symbol(sym: str) -> tuple[dict | None, list, dict | None]:
                 )
                 signals = [s for s in signals if s.get("direction", "") == top_dir]
 
-        decision = None
-        if signals:
+    decision = None
+    if signals:
             best = signals[0]
             for name, strategy_fn in STRATEGIES:
                 if name == best["name"] or best["name"].lower().replace(" ", "_") in name.lower():
@@ -333,11 +331,9 @@ def _scan_symbol(sym: str) -> tuple[dict | None, list, dict | None]:
                         "force_fire": True,
                     }
 
-        return market_state, strategy_scores, decision
-    finally:
-        config.PIP_SIZE = original_pip
-        config.SYMBOL   = original_sym
-
+    return market_state, strategy_scores, decision
+    
+        
 
 def run_engine_cycle():
     _reset_daily_stats_if_needed()
@@ -355,8 +351,13 @@ def run_engine_cycle():
     best_sym         = config.SYMBOL
     all_scores       = []
 
-    for sym in scan_symbols:
-        market_state, scores, decision = _scan_symbol(sym)
+    def _scan_with_sym(sym):
+        return sym, _scan_symbol(sym)
+
+    with ThreadPoolExecutor(max_workers=len(scan_symbols)) as executor:
+        parallel_results = list(executor.map(_scan_with_sym, scan_symbols))
+
+    for sym, (market_state, scores, decision) in parallel_results:
         if market_state is None:
             continue
 
@@ -368,6 +369,14 @@ def run_engine_cycle():
         for s in scores:
             s["symbol"] = sym
         all_scores.extend(scores)
+
+        if decision and decision.get("confidence", 0) > best_score:
+            best_score    = decision["confidence"]
+            best_decision = decision
+            best_state    = market_state
+            best_sym      = sym
+
+        
 
         if decision and decision.get("confidence", 0) > best_score:
             best_score    = decision["confidence"]
