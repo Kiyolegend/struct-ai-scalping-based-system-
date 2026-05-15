@@ -299,7 +299,8 @@ def _scan_symbol(sym: str) -> tuple[dict | None, list, dict | None]:
     if signals:
             best = signals[0]
             for name, strategy_fn in STRATEGIES:
-                if name == best["name"] or best["name"].lower().replace(" ", "_") in name.lower():
+                best_name = (best.get("name") or "")
+                if name == best_name or best_name.lower().replace(" ", "_") in name.lower():
                     try:
                         result = strategy_fn(market_state, debug=force_fire)
                         if result and result.get("trade"):
@@ -378,12 +379,7 @@ def run_engine_cycle():
 
         
 
-        if decision and decision.get("confidence", 0) > best_score:
-            best_score    = decision["confidence"]
-            best_decision = decision
-            best_state    = market_state
-            best_sym      = sym
-
+        
     if best_state is None:
         with state_lock:
             engine_state["status"] = "error"

@@ -85,7 +85,9 @@ def check(state: dict, debug: bool = False) -> dict | None:
 
     def _pick(choch_item, bos_item):
         if choch_item and bos_item:
-            return choch_item if choch_item.get("time", 0) >= bos_item.get("time", 0) - 12 * 3600 else bos_item
+            if bos_item.get("time", 0) - choch_item.get("time", 0) <= 2 * 3600:
+                return choch_item
+            return choch_item if choch_item.get("time", 0) > bos_item.get("time", 0) else bos_item
         return choch_item or bos_item
 
     buy_sweep_item  = _pick(bearish_choch, bearish_bos)
@@ -226,19 +228,40 @@ def check(state: dict, debug: bool = False) -> dict | None:
     # ── Step 8: Sweep freshness bonus ─────────────────────────────────────
     sweep_age_secs = now_sec - sweep_item.get("time", now_sec) if sweep_item else 99999
     freshness_bonus = 5 if sweep_age_secs <= 4 * 3600 else 0
+    
+    # ── Step 8b: HTF directional alignment bonus ──────────────────────────
+    htf_bonus = 0
+    if direction == "bullish":
+        if b1h == "bullish": htf_bonus += 5
+        if b4h == "bullish": htf_bonus += 5
+    elif direction == "bearish":
+        if b1h == "bearish": htf_bonus += 5
+        if b4h == "bearish": htf_bonus += 5
+
+    # ── Step 8c: S/R level proximity bonus ───────────────────────────────
+    sr_bonus    = 0
+    sr_levels   = state.get("sr_levels", []) or []
+    sr_threshold = 10 * pip
+    for level in sr_levels:
+        if not isinstance(level, dict): continue
+        lp = level.get("price")
+        if lp and abs(sweep_level - lp) <= sr_threshold:
+            sr_bonus = 5
+            break
 
     if debug and freshness_bonus:
         print(f"    [S2] fresh sweep ({sweep_age_secs//3600}h old) → +5 bonus")
 
     # ── Total score ───────────────────────────────────────────────────────
     total_score = (sweep_score + reversal_score + market_score +
-                   precision_score + zone_score + session_score + freshness_bonus)
+                   precision_score + zone_score + session_score + freshness_bonus + htf_bonus + sr_bonus)
 
     if debug:
         print(f"    [S2] {direction} | sweep={sweep_score}({'CHoCH' if is_choch_sweep else 'BOS'}) "
               f"rev={reversal_score}({'CHoCH' if is_choch_confirm else 'BOS'}) "
               f"mkt={market_score} prec={precision_score} "
-              f"zone={zone_score} sess={session_score} fresh={freshness_bonus} → {total_score}")
+              f"zone={zone_score} sess={session_score} fresh={freshness_bonus} "
+              f"htf={htf_bonus} sr={sr_bonus} → {total_score}")
 
     if total_score < config.MIN_CONFIDENCE:
         if debug: print(f"    [S2] skip: score {total_score} < {config.MIN_CONFIDENCE}")

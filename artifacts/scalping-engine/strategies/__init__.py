@@ -3,6 +3,7 @@ from .scalp2 import check as scalp2
 from .scalp3 import check as scalp3
 from .scalp4 import check as scalp4
 from .scalp5 import check as scalp5
+from .scalp6 import check as scalp6
 
 # All strategies are evaluated every cycle.
 # The engine picks the one with the highest confluence score (>= 70).
@@ -13,4 +14,5 @@ STRATEGIES = [
     ("ICT OB/FVG Zone Reaction", scalp3),
     ("Volatility Compression Breakout", scalp4),
     ("Session Open Momentum Scalp", scalp5),
+    ("Asian Range Boundary Reaction", scalp6)
 ]
