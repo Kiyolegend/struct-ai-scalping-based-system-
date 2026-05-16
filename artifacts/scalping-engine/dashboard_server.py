@@ -196,6 +196,7 @@ def _save_settings() -> None:
             }, f, indent=2)
     except Exception as e:
         print(f"[SETTINGS] Save error: {e}")
+
 def _reset_daily_stats_if_needed():
     today = datetime.now(timezone.utc).date()
     if session_stats["last_reset_date"] != today:
@@ -252,9 +253,8 @@ def _scan_symbol(sym: str) -> tuple[dict | None, list, dict | None]:
         return None, [], None   # symbol disabled — skip entirely
 
     cfg = config.get_symbol_cfg(sym)
-    
 
-    
+
     market_state = build_state(sym)
     if market_state is None:
             return None, [], None
@@ -274,9 +274,15 @@ def _scan_symbol(sym: str) -> tuple[dict | None, list, dict | None]:
                 # Even if no strategy "fired", take the one with highest score
                 signals = sorted(strategy_scores, key=lambda s: s["score"], reverse=True)
     else:
+            # ── BUG 8 FIX: S6 (Asian Range Boundary Reaction) is exempt from
+            # the asian_only block because it is designed exclusively for that
+            # window. All other strategies (S1-S5) are correctly blocked during
+            # Asian-only sessions.
+            S6_NAME = "Asian Range Boundary Reaction"
             signals = [
                 s for s in strategy_scores
-                if s["fired"] and s["score"] >= config.MIN_CONFIDENCE and not asian_only
+                if s["fired"] and s["score"] >= config.MIN_CONFIDENCE
+                and (not asian_only or s.get("name") == S6_NAME)
             ]
             signals.sort(key=lambda s: s["score"], reverse=True)
                     # ── Directional conflict check ────────────────────────────────────
@@ -333,8 +339,7 @@ def _scan_symbol(sym: str) -> tuple[dict | None, list, dict | None]:
                     }
 
     return market_state, strategy_scores, decision
-    
-        
+
 
 def run_engine_cycle():
     _reset_daily_stats_if_needed()
@@ -377,9 +382,6 @@ def run_engine_cycle():
             best_state    = market_state
             best_sym      = sym
 
-        
-
-        
     if best_state is None:
         with state_lock:
             engine_state["status"] = "error"
@@ -413,6 +415,10 @@ def run_engine_cycle():
         log_trade(approved_decision, executed=success, mode=mode_label)
         if success:
             session_stats["trades_today"] += 1
+            # ── BUG 5 FIX (part 1): reset consecutive losses when a trade
+            # fires successfully. The increment happens in set_journal_result
+            # when the user marks the trade as W or L.
+            session_stats["consecutive_losses"] = 0
             signal_memory.record(approved_decision, best_state)
             _add_to_journal(approved_decision, lot, mode_label)
             trade_entry = {
@@ -743,6 +749,14 @@ def set_journal_result():
                 e["result"] = result
                 e["pnl"]    = e["pnl_win"] if result == "W" else e["pnl_loss"]
                 matched = True
+                # ── BUG 5 FIX (part 2): update consecutive loss counter when
+                # the user marks a trade result. This is the only place the
+                # counter should be incremented — the engine resets it to 0
+                # when a new trade fires (see run_engine_cycle above).
+                if result == "L":
+                    session_stats["consecutive_losses"] += 1
+                elif result == "W":
+                    session_stats["consecutive_losses"] = 0
                 break
         if not matched:
             return jsonify({"ok": False, "error": f"Trade {tid} not found"}), 404

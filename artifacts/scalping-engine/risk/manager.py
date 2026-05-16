@@ -70,7 +70,20 @@ def validate(decision, session_stats: dict) -> tuple[bool, str]:
     # Use small epsilon to avoid floating-point edge cases (e.g. 7.000...318 < 7)
     if sl_pips < config.MIN_SL_PIPS - 1e-9:
         return False, f"SL {sl_pips:.1f} pips below minimum {config.MIN_SL_PIPS}"
-    pip_value       = (pip_size / entry) * config.CONTRACT_SIZE * config.DEFAULT_LOT
+
+    # ── BUG 9 FIX (corrected): pip value depends on which currency is the quote.
+    # USD-quoted pairs (EUR/USD, GBP/USD, AUD/USD): 1 pip = $10 flat, no conversion.
+    # All other pairs (USD/JPY, EUR/JPY, GBP/JPY, USD/CAD, USD/CHF): quote is not
+    # USD, so pip value in USD = pip_size / entry × contract_size.
+    # Previous fix only branched on JPY — missed USD/CAD (~$7.40/pip) and
+    # USD/CHF (~$11.25/pip) which also require price conversion.
+    _USD_QUOTE_PAIRS = {"EUR/USD", "GBP/USD", "AUD/USD"}
+    symbol          = decision.get("symbol", "")
+    if symbol in _USD_QUOTE_PAIRS:
+        pip_value   = pip_size * config.CONTRACT_SIZE * config.DEFAULT_LOT
+    else:
+        pip_value   = (pip_size / entry) * config.CONTRACT_SIZE * config.DEFAULT_LOT
+
     risk_amount     = sl_pips * pip_value
     max_risk_amount = config.ACCOUNT_BALANCE * config.MAX_RISK_PERCENT
     if risk_amount > max_risk_amount:

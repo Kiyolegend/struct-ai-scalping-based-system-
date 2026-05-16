@@ -8,11 +8,38 @@ Once a trade fires, that key is locked until market structure changes:
   - Daily reset (new trading day)
 """
 
+import json
+import os
+
 
 class SignalMemory:
     def __init__(self):
+        self._path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "signal_memory.json")
         self._key  = None
         self._bias = None
+        self._load()
+
+    def _load(self):
+        try:
+            with open(self._path, "r") as f:
+                data = json.load(f)
+            key        = data.get("key")
+            self._key  = tuple(key) if key is not None else None
+            self._bias = data.get("bias")
+        except (FileNotFoundError, json.JSONDecodeError, Exception):
+            self._key  = None
+            self._bias = None
+
+    def _save(self):
+        try:
+            data = {
+                "key":  list(self._key) if self._key is not None else None,
+                "bias": self._bias,
+            }
+            with open(self._path, "w") as f:
+                json.dump(data, f)
+        except Exception:
+            pass
 
     def _make_key(self, decision: dict) -> tuple:
         return (
@@ -38,7 +65,9 @@ class SignalMemory:
     def record(self, decision: dict, state: dict):
         self._key  = self._make_key(decision)
         self._bias = state.get("bias", {}).get("1h", "neutral")
+        self._save()
 
     def clear(self):
         self._key  = None
         self._bias = None
+        self._save()

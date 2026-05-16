@@ -194,6 +194,27 @@ def check(state: dict, debug: bool = False) -> dict | None:
     # ── Total score ───────────────────────────────────────────────────────
     total_score = bias_score + pullback_score + bos_score + location_score + session_score + zone_score
 
+    # ── Displacement upgrade (must run BEFORE threshold gate) ─────────────
+    # If only one BOS, check for a strong displacement candle (body ≥ 70%).
+    # A single BOS with clear displacement is upgraded to equal a double BOS.
+    # This must happen before the MIN_CONFIDENCE check so the upgraded score
+    # is what gets evaluated — not the lower pre-upgrade score.
+    if len(matching_bos) < 2:
+        candles_5m_raw  = s5m.get("candles", [])
+        is_displacement = False
+        for c in reversed(candles_5m_raw[-6:]):
+            o_ = c.get("open", 0); h_ = c.get("high", 0)
+            l_ = c.get("low",  0); cl_= c.get("close",0)
+            if (cl_ > o_) if direction == "bullish" else (cl_ < o_):
+                rng = h_ - l_; body = abs(cl_ - o_)
+                if rng > 0 and (body / rng) >= 0.70:
+                    is_displacement = True; break
+        if not is_displacement:
+            print("    [S1] REJECTED: weak BOS — 1 BOS, no displacement candle")
+            return None
+        bos_score = 20  # single strong BOS upgraded to match TradeTeller scoring
+        total_score = bias_score + pullback_score + bos_score + location_score + session_score + zone_score
+
     if debug:
         print(f"    [S1] {direction} | bias={bias_score} pb={pullback_score} bos={bos_score} "
               f"loc={location_score} sess={session_score} zone={zone_score} → {total_score}")
@@ -272,22 +293,6 @@ def check(state: dict, debug: bool = False) -> dict | None:
     net_rr        = round(net_tp_dist / net_sl_dist, 2) if net_sl_dist > 0 else 0
 
     # ── Post filters ──────────────────────────────────────────────────────
-    if len(matching_bos) < 2:
-        candles_5m_raw  = s5m.get("candles", [])
-        is_displacement = False
-        for c in reversed(candles_5m_raw[-6:]):
-            o_ = c.get("open", 0); h_ = c.get("high", 0)
-            l_ = c.get("low",  0); cl_= c.get("close",0)
-            if (cl_ > o_) if direction == "bullish" else (cl_ < o_):
-                rng = h_ - l_; body = abs(cl_ - o_)
-                if rng > 0 and (body / rng) >= 0.70:
-                    is_displacement = True; break
-        if not is_displacement:
-            print("    [S1] REJECTED: weak BOS — 1 BOS, no displacement candle")
-            return None
-        bos_score = 20  # single strong BOS upgraded to match TradeTeller scoring
-        total_score = bias_score + pullback_score + bos_score + location_score + session_score + zone_score
-
     if dist_pips > 15:
         print(f"    [S1] REJECTED: {dist_pips:.1f}p from pullback (>15p hard limit)")
         return None
