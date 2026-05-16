@@ -93,6 +93,10 @@ JOURNAL_FILE  = os.path.join(os.path.dirname(__file__), "journal.json")
 SETTINGS_FILE = os.path.join(os.path.dirname(__file__), "settings.json")
 journal_lock  = threading.Lock()
 
+# Latest mid-price per symbol — updated each scan cycle for SIM outcome detection
+symbol_prices: dict[str, float] = {}
+prices_lock   = threading.Lock()
+
 
 def _load_journal() -> list:
     try:
@@ -150,14 +154,16 @@ def _add_to_journal(decision: dict, lot: float, mode: str) -> None:
         "lot":         lot,
         "pnl_win":     pnl_win,
         "pnl_loss":    pnl_loss,
-        "result":      None,   # null until user marks W or L
+        "result":      None,   # null until marked W or L
         "pnl":         None,
         "reason":      decision.get("reason", ""),
+        "auto_monitor": True,  # watched by outcome watcher until result is set
     }
     with journal_lock:
         entries = _load_journal()
         entries.insert(0, entry)   # newest first
         _save_journal(entries)
+
 
 def _load_settings() -> None:
     """Load saved risk settings from disk and apply to config on startup."""
@@ -196,6 +202,7 @@ def _save_settings() -> None:
             }, f, indent=2)
     except Exception as e:
         print(f"[SETTINGS] Save error: {e}")
+
 
 def _reset_daily_stats_if_needed():
     today = datetime.now(timezone.utc).date()
@@ -254,89 +261,89 @@ def _scan_symbol(sym: str) -> tuple[dict | None, list, dict | None]:
 
     cfg = config.get_symbol_cfg(sym)
 
-
     market_state = build_state(sym)
     if market_state is None:
-            return None, [], None
+        return None, [], None
 
     strategy_scores = _score_all_strategies(market_state)
 
-    _sessions   = market_state.get("sessions", [])
+    _sessions  = market_state.get("sessions", [])
     asian_only = "asian" in _sessions and "london" not in _sessions and "ny" not in _sessions
 
     if force_fire:
-            # Force-fire: take the highest-scoring strategy regardless of threshold/session
-            signals = sorted(
-                [s for s in strategy_scores if s["fired"]],
-                key=lambda s: s["score"], reverse=True
-            )
-            if not signals:
-                # Even if no strategy "fired", take the one with highest score
-                signals = sorted(strategy_scores, key=lambda s: s["score"], reverse=True)
+        # Force-fire: take the highest-scoring strategy regardless of threshold/session
+        signals = sorted(
+            [s for s in strategy_scores if s["fired"]],
+            key=lambda s: s["score"], reverse=True
+        )
+        if not signals:
+            # Even if no strategy "fired", take the one with highest score
+            signals = sorted(strategy_scores, key=lambda s: s["score"], reverse=True)
     else:
-            # ── BUG 8 FIX: S6 (Asian Range Boundary Reaction) is exempt from
-            # the asian_only block because it is designed exclusively for that
-            # window. All other strategies (S1-S5) are correctly blocked during
-            # Asian-only sessions.
-            S6_NAME = "Asian Range Boundary Reaction"
-            signals = [
-                s for s in strategy_scores
-                if s["fired"] and s["score"] >= config.MIN_CONFIDENCE
-                and (not asian_only or s.get("name") == S6_NAME)
-            ]
-            signals.sort(key=lambda s: s["score"], reverse=True)
-                    # ── Directional conflict check ────────────────────────────────────
-        # If top two fired signals point in opposite directions, log the
-        # conflict and keep only signals that match the highest-confidence
-        # direction. Engine always takes the strongest signal.
+        # ── BUG 8 FIX: S6 (Asian Range Boundary Reaction) is exempt from
+        # the asian_only block because it is designed exclusively for that
+        # window. All other strategies (S1-S5) are correctly blocked during
+        # Asian-only sessions.
+        S6_NAME = "Asian Range Boundary Reaction"
+        signals = [
+            s for s in strategy_scores
+            if s["fired"] and s["score"] >= config.MIN_CONFIDENCE
+            and (not asian_only or s.get("name") == S6_NAME)
+        ]
+        signals.sort(key=lambda s: s["score"], reverse=True)
+
+    # ── Directional conflict check ────────────────────────────────────────────
+    # If top two fired signals point in opposite directions, log the
+    # conflict and keep only signals that match the highest-confidence
+    # direction. Engine always takes the strongest signal.
     if len(signals) >= 2:
-            top_dir    = signals[0].get("direction", "")
-            second_dir = signals[1].get("direction", "")
-            if top_dir and second_dir and top_dir != second_dir:
-                print(
-                    f"  [ENGINE] ⚠️  DIRECTION CONFLICT: "
-                    f"{signals[0]['name']}={top_dir}({signals[0]['score']}) "
-                    f"vs {signals[1]['name']}={second_dir}({signals[1]['score']}) "
-                    f"— keeping {signals[0]['name']} only"
-                )
-                signals = [s for s in signals if s.get("direction", "") == top_dir]
+        top_dir    = signals[0].get("direction", "")
+        second_dir = signals[1].get("direction", "")
+        if top_dir and second_dir and top_dir != second_dir:
+            print(
+                f"  [ENGINE] ⚠️  DIRECTION CONFLICT: "
+                f"{signals[0]['name']}={top_dir}({signals[0]['score']}) "
+                f"vs {signals[1]['name']}={second_dir}({signals[1]['score']}) "
+                f"— keeping {signals[0]['name']} only"
+            )
+            signals = [s for s in signals if s.get("direction", "") == top_dir]
 
     decision = None
     if signals:
-            best = signals[0]
-            for name, strategy_fn in STRATEGIES:
-                best_name = (best.get("name") or "")
-                if name == best_name or best_name.lower().replace(" ", "_") in name.lower():
-                    try:
-                        result = strategy_fn(market_state, debug=force_fire)
-                        if result and result.get("trade"):
-                            decision = result
-                            decision["symbol"]     = sym
-                            decision["force_fire"] = force_fire
-                            break
-                    except Exception:
-                        pass
+        best = signals[0]
+        for name, strategy_fn in STRATEGIES:
+            best_name = (best.get("name") or "")
+            if name == best_name or best_name.lower().replace(" ", "_") in name.lower():
+                try:
+                    result = strategy_fn(market_state, debug=force_fire)
+                    if result and result.get("trade"):
+                        decision = result
+                        decision["symbol"]     = sym
+                        decision["force_fire"] = force_fire
+                        break
+                except Exception:
+                    pass
 
-            # Force-fire fallback: build a minimal decision from the top score even if check() returned None
-            if force_fire and decision is None:
-                price = market_state.get("current_price")
-                pip   = cfg["pip_size"]
-                if price:
-                    sl = price - 15 * pip
-                    tp = price + 30 * pip
-                    decision = {
-                        "trade":      True,
-                        "type":       "BUY",
-                        "symbol":     sym,
-                        "confidence": best["score"],
-                        "strategy":   best["name"],
-                        "reason":     f"FORCE-FIRE — score {best['score']}",
-                        "entry":      price,
-                        "sl":         round(sl, 5),
-                        "tp":         round(tp, 5),
-                        "rr":         2.0,
-                        "force_fire": True,
-                    }
+        # Force-fire fallback: build a minimal decision from the top score even if check() returned None
+        if force_fire and decision is None:
+            price = market_state.get("current_price")
+            pip   = cfg["pip_size"]
+            if price:
+                sl = price - 15 * pip
+                tp = price + 30 * pip
+                decision = {
+                    "trade":      True,
+                    "type":       "BUY",
+                    "symbol":     sym,
+                    "confidence": best["score"],
+                    "strategy":   best["name"],
+                    "reason":     f"FORCE-FIRE — score {best['score']}",
+                    "entry":      price,
+                    "sl":         round(sl, 5),
+                    "tp":         round(tp, 5),
+                    "rr":         2.0,
+                    "force_fire": True,
+                }
 
     return market_state, strategy_scores, decision
 
@@ -444,24 +451,28 @@ def run_engine_cycle():
     m15  = best_state.get("15m", {})
 
     with state_lock:
-        engine_state["status"]           = "running"
-        engine_state["symbol"]           = best_sym
-        engine_state["price"]            = best_state.get("current_price")
-        engine_state["bias"]             = bias
-        engine_state["sessions"]         = best_state.get("sessions", [])
-        engine_state["asia_range"]       = asia
-        engine_state["bos_count"]        = len(m5.get("bos", []))
-        engine_state["choch_count"]      = len(m15.get("choch", []))
-        engine_state["zone_count"]       = len(m5.get("zones", []))
-        engine_state["strategy_scores"]  = all_scores
-        engine_state["active_signal"]    = approved_decision
-        engine_state["scan_symbols"]     = scan_symbols
-        engine_state["trades_today"]     = session_stats["trades_today"]
+        engine_state["status"]             = "running"
+        engine_state["symbol"]             = best_sym
+        engine_state["price"]              = best_state.get("current_price")
+        engine_state["bias"]               = bias
+        engine_state["sessions"]           = best_state.get("sessions", [])
+        engine_state["asia_range"]         = asia
+        engine_state["bos_count"]          = len(m5.get("bos", []))
+        engine_state["choch_count"]        = len(m15.get("choch", []))
+        engine_state["zone_count"]         = len(m5.get("zones", []))
+        engine_state["strategy_scores"]    = all_scores
+        engine_state["active_signal"]      = approved_decision
+        engine_state["scan_symbols"]       = scan_symbols
+        engine_state["trades_today"]       = session_stats["trades_today"]
         engine_state["consecutive_losses"] = session_stats["consecutive_losses"]
-        engine_state["last_update"]      = datetime.now(timezone.utc).strftime("%H:%M:%S UTC")
-        engine_state["cycle_count"]     += 1
+        engine_state["last_update"]        = datetime.now(timezone.utc).strftime("%H:%M:%S UTC")
+        engine_state["cycle_count"]       += 1
         if block_reason:
             engine_state["last_block"] = block_reason
+
+    # Update price tracker so outcome watcher can detect SIM trade results
+    with prices_lock:
+        symbol_prices[best_sym] = best_state.get("current_price") or 0
 
 
 def engine_loop():
@@ -481,20 +492,109 @@ def engine_loop():
             time.sleep(1)
 
 
-# ── Flask routes ─────────────────────────────────────────────────────────────
+# ── Auto outcome watcher ──────────────────────────────────────────────────────
+def _auto_mark_result(tid: str, result: str) -> None:
+    """Mark a journal entry W or L internally — mirrors set_journal_result logic."""
+    with journal_lock:
+        entries = _load_journal()
+        for e in entries:
+            if e.get("id") == tid and e.get("result") is None:
+                e["result"]       = result
+                e["pnl"]          = e["pnl_win"] if result == "W" else e["pnl_loss"]
+                e["auto_monitor"] = False   # stop watching this entry
+                _save_journal(entries)
+                if result == "L":
+                    session_stats["consecutive_losses"] += 1
+                else:
+                    session_stats["consecutive_losses"] = 0
+                break
+
+
+def _outcome_watcher() -> None:
+    """Background thread: polls price levels (SIM) or MT5 history (LIVE)
+    and auto-marks pending journal entries W or L."""
+    while True:
+        time.sleep(config.LOOP_INTERVAL)
+        try:
+            with journal_lock:
+                entries = _load_journal()
+            pending = [e for e in entries
+                       if e.get("result") is None and e.get("auto_monitor")]
+            if not pending:
+                continue
+            now_utc = datetime.now(timezone.utc)
+            for entry in pending:
+                sym       = entry.get("symbol", "")
+                direction = entry.get("direction", "BUY")
+                sl        = float(entry.get("sl",  0) or 0)
+                tp        = float(entry.get("tp",  0) or 0)
+                mode      = entry.get("mode", "SIM")
+                tid       = entry["id"]
+                if sl == 0 or tp == 0:
+                    continue   # incomplete entry — skip
+                # ── SIM mode: compare live price against SL / TP ─────────────
+                if mode == "SIM":
+                    with prices_lock:
+                        price = symbol_prices.get(sym)
+                    if price is None:
+                        continue
+                    if direction == "BUY":
+                        if price >= tp:
+                            _auto_mark_result(tid, "W")
+                        elif price <= sl:
+                            _auto_mark_result(tid, "L")
+                    else:   # SELL
+                        if price <= tp:
+                            _auto_mark_result(tid, "W")
+                        elif price >= sl:
+                            _auto_mark_result(tid, "L")
+                # ── LIVE mode: check MT5 closed deal history ─────────────────
+                elif mode == "LIVE":
+                    try:
+                        import MetaTrader5 as mt5
+                        if not mt5.initialize():
+                            continue
+                        sym_cfg    = config.get_symbol_cfg(sym)
+                        mt5_symbol = sym_cfg["mt5_name"]
+                        try:
+                            from_dt = datetime.strptime(
+                                entry.get("timestamp", ""),
+                                "%Y-%m-%d %H:%M UTC"
+                            ).replace(tzinfo=timezone.utc)
+                        except ValueError:
+                            mt5.shutdown()
+                            continue
+                        deals = mt5.history_deals_get(from_dt, now_utc,
+                                                      group=f"*{mt5_symbol}*")
+                        if deals:
+                            for deal in deals:
+                                # entry == 1 means this is a position-closing deal
+                                if getattr(deal, "entry", -1) == 1:
+                                    result = "W" if deal.profit >= 0 else "L"
+                                    _auto_mark_result(tid, result)
+                                    break
+                        mt5.shutdown()
+                    except Exception:
+                        pass   # MT5 unavailable — silently skip, try next cycle
+        except Exception:
+            pass   # never crash the watcher thread
+
+
+# ── Flask routes ──────────────────────────────────────────────────────────────
 
 @app.route("/")
 def index():
     return render_template("dashboard.html")
 
+
 @app.route('/api/heatmap')
 def heatmap():
     short = {
-        "MTF Pullback Precision Scalping":  "S1 Pullback",
-        "Liquidity Sweep Reversal Scalping": "S2 Sweep",
-        "ICT OB/FVG Zone Reaction":          "S3 OB/FVG",
-        "Volatility Compression Breakout":   "S4 Compression",
-        "Session Open Momentum Scalp":       "S5 Session",
+        "MTF Pullback Precision Scalping":   "S1 Pullback",
+        "Liquidity Sweep Reversal Scalping":  "S2 Sweep",
+        "ICT OB/FVG Zone Reaction":           "S3 OB/FVG",
+        "Volatility Compression Breakout":    "S4 Compression",
+        "Session Open Momentum Scalp":        "S5 Session",
     }
     result = {}
     for sym in config.SCAN_SYMBOLS:
@@ -594,7 +694,8 @@ def update_settings():
 
     if "min_confidence" in data:
         config.MIN_CONFIDENCE = int(_clamp(int(data["min_confidence"]), 50, 100))
-    if "max_trades_per_day" in data:              # ← un-nested, aligned with the others
+
+    if "max_trades_per_day" in data:
         config.MAX_TRADES_PER_DAY = int(_clamp(int(data["max_trades_per_day"]), 1, 10))
 
     _save_settings()
@@ -619,8 +720,8 @@ def set_symbol(symbol_key: str):
     cfg = config.get_symbol_cfg(symbol)
     if cfg == config.get_symbol_cfg("USD/JPY") and symbol != "USD/JPY":
         return jsonify({"ok": False, "error": f"Unknown symbol {symbol}"}), 400
-    config.SYMBOL    = symbol
-    config.PIP_SIZE  = cfg["pip_size"]
+    config.SYMBOL     = symbol
+    config.PIP_SIZE   = cfg["pip_size"]
     config.MT5_SYMBOL = cfg["mt5_name"]
     with state_lock:
         engine_state["symbol"] = symbol
@@ -686,20 +787,20 @@ def get_journal():
     with journal_lock:
         entries = _load_journal()
 
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    today   = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     marked  = [e for e in entries if e.get("result") in ("W", "L")]
     wins    = [e for e in marked if e["result"] == "W"]
     losses  = [e for e in marked if e["result"] == "L"]
 
-    total_pnl   = sum(e.get("pnl", 0) or 0 for e in marked)
-    today_pnl   = sum(e.get("pnl", 0) or 0 for e in marked if e.get("date") == today)
-    win_rate    = round(len(wins) / len(marked) * 100, 1) if marked else 0
-    avg_rr      = round(sum(e.get("rr", 0) for e in entries) / len(entries), 2) if entries else 0
+    total_pnl = sum(e.get("pnl", 0) or 0 for e in marked)
+    today_pnl = sum(e.get("pnl", 0) or 0 for e in marked if e.get("date") == today)
+    win_rate  = round(len(wins) / len(marked) * 100, 1) if marked else 0
+    avg_rr    = round(sum(e.get("rr", 0) for e in entries) / len(entries), 2) if entries else 0
 
     # Equity curve: cumulative P&L in chronological order
-    chrono   = list(reversed(marked))
-    equity   = []
-    running  = 0.0
+    chrono  = list(reversed(marked))
+    equity  = []
+    running = 0.0
     for e in chrono:
         running += e.get("pnl", 0) or 0
         equity.append({"date": e["timestamp"], "pnl": round(running, 2)})
@@ -716,7 +817,7 @@ def get_journal():
     daily = [{"date": k, **v, "pnl": round(v["pnl"], 2)} for k, v in sorted(day_map.items(), reverse=True)]
 
     return jsonify({
-        "entries":      entries,
+        "entries": entries,
         "stats": {
             "total_trades": len(entries),
             "marked":       len(marked),
@@ -746,8 +847,9 @@ def set_journal_result():
         matched = False
         for e in entries:
             if e.get("id") == tid:
-                e["result"] = result
-                e["pnl"]    = e["pnl_win"] if result == "W" else e["pnl_loss"]
+                e["result"]       = result
+                e["pnl"]          = e["pnl_win"] if result == "W" else e["pnl_loss"]
+                e["auto_monitor"] = False   # stop the watcher from re-marking this entry
                 matched = True
                 # ── BUG 5 FIX (part 2): update consecutive loss counter when
                 # the user marks a trade result. This is the only place the
@@ -774,8 +876,9 @@ def unmark_journal_result():
         matched = False
         for e in entries:
             if e.get("id") == tid:
-                e["result"] = None
-                e["pnl"]    = None
+                e["result"]       = None
+                e["pnl"]          = None
+                e["auto_monitor"] = True   # re-enable watcher for this entry
                 matched = True
                 break
         if not matched:
@@ -837,6 +940,7 @@ def main():
 
     t = threading.Thread(target=engine_loop, daemon=True)
     t.start()
+    threading.Thread(target=_outcome_watcher, daemon=True, name="outcome-watcher").start()
 
     def open_browser():
         time.sleep(1.5)

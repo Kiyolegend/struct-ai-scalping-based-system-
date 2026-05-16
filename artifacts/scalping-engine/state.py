@@ -80,7 +80,7 @@ def sanitize_state(state: dict) -> dict | None:
         "15m": bias.get("15m") or "neutral",
     }
 
-    for tf in ( "5m", "15m", "1h", "4h"):
+    for tf in ("5m", "15m", "1h", "4h"):
         tf_data = state.get(tf) or {}
         state[tf] = {
             "trend":     tf_data.get("trend")     or "neutral",
@@ -137,15 +137,23 @@ def build_state(symbol: str = None) -> dict | None:
         print("FAILED — no 5m candles")
         return None
 
+    # ── API contract guard — fail loudly if Repo 1 changed its field names ──
+    # If STRUCT.ai (Repo 1) renames a field (e.g. "choch" → "choch_events"),
+    # state.py would silently return empty lists and strategies would fire nothing.
+    # This check converts that silent failure into an obvious console message.
+    _REQUIRED = {"bos", "choch", "zones", "structure_labels", "candles"}
+    _missing  = _REQUIRED - set(a5m.keys())
+    if _missing:
+        print(f"FAILED — Repo 1 API response missing fields: {_missing}")
+        print(f"  /analysis endpoint may have renamed fields. Check Repo 1.")
+        return None
+
     current_price = candles_5m[-1].get("close")
     if not isinstance(current_price, (int, float)) or current_price <= 0:
         print("FAILED — invalid or missing price from API")
         return None
 
-    # 1M is optional — fetch best-effort
-    
-
-    sessions      = get_active_sessions()
+    sessions          = get_active_sessions()
     asia_high, asia_low = _get_asia_range(candles_5m)
 
     bias_15m = bias.get("bias_15m", {}).get("trend") or "neutral"
@@ -154,19 +162,16 @@ def build_state(symbol: str = None) -> dict | None:
 
     print(f"OK  [price={current_price:.3f}  sessions={sessions}  bias=4H:{bias_4h}/1H:{bias_1h}/15M:{bias_15m}]")
 
-    
-
     return sanitize_state({
-        "symbol":         sym,
-        "current_price":  current_price,
-        "sessions":       sessions,
+        "symbol":            sym,
+        "current_price":     current_price,
+        "sessions":          sessions,
         "tradeable_session": is_tradeable_session(sessions),
         "bias": {
             "15m": bias_15m,
             "1h":  bias_1h,
             "4h":  bias_4h,
         },
-        
         "5m": {
             "trend":     a5m.get("trend", {}).get("trend", "neutral"),
             "structure": a5m.get("structure_labels", []),

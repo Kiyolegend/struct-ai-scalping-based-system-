@@ -23,6 +23,15 @@ Scoring breakdown (max 105):
   FVG + micro confirm  — 10        (FVG retest + 5M BOS/CHoCH in direction)
   Session timing       — 10        (London/NY=10, Asia=immediate reject)
 
+Hard gates (any failure = skip, evaluated in order):
+  1. London or NY session only
+  2. Clear HTF bias (1H minimum, 4H preferred)
+  3. Compression confirmed (recent range ≤ 65% of baseline)
+  4. Displacement candle (body≥70%, range≥1.5×avg, within 1h, breaks zone)
+  5. Zone/OB/S/R anchor within 15 pips of breakout edge  ← NEW
+  6. Price within 30 pips of breakout edge (not chasing)
+  7. Micro BOS/CHoCH confirmation (FVG retest bonus if also in FVG)
+
 Minimum score: 80
 Entry = market price
 SL    = beyond compression zone edge + buffer
@@ -41,15 +50,6 @@ import config
 def _detect_compression(candles: list,
                          compress_window: int = 10,
                          baseline_window: int = 15) -> dict | None:
-    """
-    Measures whether recent candles are compressed vs a stable baseline.
-
-    compress_window : candles to measure as "recent compression" (last N)
-    baseline_window : candles before that — used as the volatility baseline
-
-    confirmed = True when recent avg range is ≤ 65% of baseline avg range.
-    Returns compression zone high/low and the ratio.
-    """
     needed = compress_window + baseline_window
     if len(candles) < needed:
         return None
@@ -84,24 +84,17 @@ def _detect_compression(candles: list,
 def _find_swing_highs(candles: list, pip: float,
                        tolerance_pips: float = 3.0,
                        min_spacing: int = 3) -> float | None:
-    """
-    Find proper swing highs (local peaks — higher than both neighbours)
-    with at least min_spacing candles between them.
-    Returns the average level if 2+ swing highs cluster within tolerance_pips.
-    """
     tolerance = tolerance_pips * pip
     swing_highs = []
     for i in range(1, len(candles) - 1):
         if (candles[i]["high"] > candles[i - 1]["high"] and
                 candles[i]["high"] > candles[i + 1]["high"]):
-            # Enforce spacing from previous swing high
             if not swing_highs or (i - swing_highs[-1][0]) >= min_spacing:
                 swing_highs.append((i, candles[i]["high"]))
 
     if len(swing_highs) < 2:
         return None
 
-    # Look for 2+ swings within tolerance
     levels = [sh[1] for sh in swing_highs]
     for ref in levels:
         cluster = [v for v in levels if abs(v - ref) <= tolerance]
@@ -114,11 +107,6 @@ def _find_swing_highs(candles: list, pip: float,
 def _find_swing_lows(candles: list, pip: float,
                       tolerance_pips: float = 3.0,
                       min_spacing: int = 3) -> float | None:
-    """
-    Find proper swing lows (local troughs — lower than both neighbours)
-    with at least min_spacing candles between them.
-    Returns the average level if 2+ swing lows cluster within tolerance_pips.
-    """
     tolerance = tolerance_pips * pip
     swing_lows = []
     for i in range(1, len(candles) - 1):
@@ -141,14 +129,6 @@ def _find_swing_lows(candles: list, pip: float,
 
 def _detect_liquidity_pools(candles: list, direction: str,
                               pip: float) -> dict:
-    """
-    FIX 1: direction-aware liquidity detection.
-
-    Bullish breakout → draw is equal highs ABOVE price (buy-side liquidity target).
-    Bearish breakout → draw is equal lows BELOW price (sell-side liquidity target).
-
-    Uses proper swing high/low detection with spacing enforcement (FIX 4).
-    """
     pool_window = candles[-25:]
 
     if direction == "bullish":
@@ -166,16 +146,6 @@ def _detect_liquidity_pools(candles: list, direction: str,
 def _detect_displacement(candles: list, comp_high: float, comp_low: float,
                           pip: float, avg_range: float,
                           max_age_secs: int = 3600) -> dict | None:
-    """
-    FIX 2: candle must be ≥ 1.5× the baseline avg range (not just 70% body).
-    FIX 3: max_age reduced to 60 minutes (was 2 hours).
-
-    Finds the most recent 5M candle that:
-      - Body ≥ 70% of its full high-low range
-      - Range ≥ 1.5× average recent candle range (actual size matters)
-      - Closes outside the compression zone high or low
-      - Happened within max_age_secs (60 minutes)
-    """
     now          = int(_time.time())
     min_range    = avg_range * 1.5
 
@@ -193,7 +163,7 @@ def _detect_displacement(candles: list, comp_high: float, comp_low: float,
 
         if rng <= 0:
             continue
-        if rng < min_range:          # FIX 2: reject small candles
+        if rng < min_range:
             continue
         if (body / rng) < 0.70:
             continue
@@ -216,10 +186,6 @@ def _detect_displacement(candles: list, comp_high: float, comp_low: float,
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _detect_fvg(candles: list, direction: str, price: float) -> bool:
-    """
-    Returns True if current price is inside a Fair Value Gap
-    left by the displacement move (within last 6 candles).
-    """
     if len(candles) < 3:
         return False
 
@@ -244,13 +210,6 @@ def _detect_fvg(candles: list, direction: str, price: float) -> bool:
 
 def _detect_micro_confirmation(s5m: dict, direction: str,
                                 max_age_secs: int = 1800) -> bool:
-    """
-    FIX 6: Require a micro 5M BOS or CHoCH in the breakout direction
-    within the last 30 minutes as final entry confirmation.
-
-    This filters failed retest entries where price enters the FVG but
-    structure hasn't actually confirmed the continuation.
-    """
     now      = int(_time.time())
     bos_5m   = s5m.get("bos",   [])
     choch_5m = s5m.get("choch", [])
@@ -272,28 +231,91 @@ def _detect_micro_confirmation(s5m: dict, direction: str,
 
 def _proximity_score(price: float, comp_high: float, comp_low: float,
                       direction: str, pip: float) -> int:
-    """
-    FIX 7: Reward entries still close to the breakout origin.
-    Penalise late/extended moves that have already run far from the zone.
-
-    Distance measured from the compression zone edge in the breakout direction.
-    """
     if direction == "bullish":
         dist_pips = (price - comp_high) / pip
     else:
         dist_pips = (comp_low - price) / pip
 
     if dist_pips < 0:
-        return 0     # price back inside compression — unusual edge case
+        return 0
 
     if dist_pips <= 5:
-        return 15    # very close — ideal retest zone
+        return 15
     elif dist_pips <= 15:
-        return 10    # acceptable proximity
+        return 10
     elif dist_pips <= 30:
-        return 5     # getting extended but still ok
+        return 5
     else:
-        return 0     # too far — chasing
+        return 0
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Zone / OB / S/R anchor at breakout edge — NEW structural gate
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _has_zone_anchor(breakout_edge: float, state: dict, s5m: dict,
+                     pip: float, threshold_pips: float = 15.0) -> tuple[bool, str]:
+    """
+    Returns (True, description) if there is a supply/demand zone, S/R level,
+    or Order Block within threshold_pips of the compression zone breakout edge.
+
+    This is the gate that gives S4 a structural reason for the breakout
+    level to matter — ensuring the engine doesn't enter in open air.
+
+    Without this gate, S4 fires whenever there is compression + a displacement
+    candle, regardless of whether institutions have any reason to defend that
+    specific price. With this gate, the compression must occur at a documented
+    institutional level (OB, zone, or tested S/R) to qualify.
+
+    Checks (in order):
+      1. S/R levels from STRUCT.ai (state["sr_levels"])
+      2. Supply/demand zones on 5M and 15M
+      3. Order blocks on 5M and 15M
+    """
+    threshold = threshold_pips * pip
+    s15m      = state.get("15m", {})
+
+    # ── 1. S/R levels ─────────────────────────────────────────────────────
+    for lvl in (state.get("sr_levels") or []):
+        if not isinstance(lvl, dict):
+            continue
+        lp = lvl.get("price") or lvl.get("level")
+        if isinstance(lp, (int, float)) and abs(breakout_edge - lp) <= threshold:
+            return True, f"S/R@{lp:.5f}"
+
+    # ── 2. Supply/demand zones (5M + 15M) ─────────────────────────────────
+    for tf_data in (s5m, s15m):
+        zones = tf_data.get("zones") or []
+        if not isinstance(zones, list):
+            continue
+        for zone in zones:
+            if not isinstance(zone, dict):
+                continue
+            top    = zone.get("top")    or 0
+            bottom = zone.get("bottom") or 0
+            if top == 0 and bottom == 0:
+                continue
+            center = (top + bottom) / 2
+            if abs(breakout_edge - center) <= threshold:
+                return True, f"zone[{bottom:.5f}-{top:.5f}]"
+
+    # ── 3. Order blocks (5M + 15M) ────────────────────────────────────────
+    for tf_data in (s5m, s15m):
+        obs = tf_data.get("ob") or []
+        if not isinstance(obs, list):
+            continue
+        for ob in obs:
+            if not isinstance(ob, dict):
+                continue
+            top    = ob.get("top")    or ob.get("high") or 0
+            bottom = ob.get("bottom") or ob.get("low")  or 0
+            if top == 0 and bottom == 0:
+                continue
+            center = (top + bottom) / 2
+            if abs(breakout_edge - center) <= threshold:
+                return True, f"OB[{bottom:.5f}-{top:.5f}]"
+
+    return False, ""
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -364,7 +386,7 @@ def check(state: dict, debug: bool = False) -> dict | None:
     displacement = _detect_displacement(
         candles_5m, comp_high, comp_low, pip,
         avg_range=comp["baseline_avg"],
-        max_age_secs=3600          # 60 minutes max (was 2h)
+        max_age_secs=3600
     )
 
     if displacement is None:
@@ -383,6 +405,20 @@ def check(state: dict, debug: bool = False) -> dict | None:
         print(f"    [S4] displacement: {displacement['direction']} "
               f"body={displacement['body_pct']*100:.0f}% "
               f"range={displacement['range_pips']}p")
+
+    # ── Step 4.5: Zone / OB / S/R anchor at breakout edge — structural gate
+    breakout_edge           = comp_high if htf_direction == "bullish" else comp_low
+    anchor_ok, anchor_desc  = _has_zone_anchor(breakout_edge, state, s5m, pip,
+                                               threshold_pips=15.0)
+
+    if not anchor_ok:
+        if debug:
+            print(f"    [S4] skip: no zone/OB/S/R within 15p of breakout edge "
+                  f"@ {breakout_edge:.5f} — structural anchor required")
+        return None
+
+    if debug:
+        print(f"    [S4] anchor: {anchor_desc} @ breakout edge {breakout_edge:.5f}")
 
     # ── Step 5: Liquidity pool (FIX 1 + FIX 4) ───────────────────────────
     pool = _detect_liquidity_pools(candles_5m, htf_direction, pip)
@@ -414,11 +450,9 @@ def check(state: dict, debug: bool = False) -> dict | None:
         confirm_score = 10
         entry_model   = "FVG-retest+BOS"
     elif fvg_ok and not micro_ok:
-        # FVG found but no micro confirmation yet — too early to enter
         if debug: print("    [S4] skip: in FVG but awaiting micro BOS/CHoCH confirmation")
         return None
     else:
-        # No FVG — aggressive entry, micro confirmation still required
         if not micro_ok:
             if debug: print("    [S4] skip: no FVG and no micro BOS/CHoCH confirmation")
             return None
@@ -492,6 +526,7 @@ def check(state: dict, debug: bool = False) -> dict | None:
         f"zone={comp_low:.5f}-{comp_high:.5f}({comp_range_pips}p) | "
         f"displacement={htf_direction} body={displacement['body_pct']*100:.0f}% "
         f"range={displacement['range_pips']}p age={disp_age_min}min | "
+        f"anchor={anchor_desc} | "
         f"pool={'✓' if pool['pool_ok'] else '✗'} "
         f"prox={prox_score}pts entry={entry_model} | "
         f"sess={sessions} spread={spread_pips}pip netRR={net_rr} score={total_score}/100"

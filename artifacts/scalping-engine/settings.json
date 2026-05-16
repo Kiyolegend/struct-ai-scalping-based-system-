@@ -4,7 +4,7 @@
   "min_sl_pips": 7,
   "sl_buffer_pips": 5,
   "sweep_sl_buffer_pips": 8,
-  "min_sweep_recovery_pips": 3,
+  "min_sweep_recovery_pips": 5,
   "net_min_rr": 1.5,
   "min_confidence": 80,
   "max_trades_per_day": 3

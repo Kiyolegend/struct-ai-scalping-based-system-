@@ -18,7 +18,7 @@ SYMBOL_CONFIG = {
     "EUR/USD": {"mt5_name": "EURUSDm", "pip_size": 0.0001, "digits": 5, "spread_pips": 1.0, "pip_value_per_lot": 10.00},
     "GBP/USD": {"mt5_name": "GBPUSDm", "pip_size": 0.0001, "digits": 5, "spread_pips": 1.2, "pip_value_per_lot": 10.00},
     "EUR/JPY": {"mt5_name": "EURJPYm", "pip_size": 0.01,   "digits": 3, "spread_pips": 1.4, "pip_value_per_lot": 6.50},
-    "GBP/JPY": {"mt5_name": "GBPJPYm", "pip_size": 0.01,   "digits": 3, "spread_pips": 2.5, "pip_value_per_lot": 6.50},
+    "GBP/JPY": {"mt5_name": "GBPJPYm", "pip_size": 0.01,   "digits": 3, "spread_pips": 3.5, "pip_value_per_lot": 6.50},
     "AUD/USD": {"mt5_name": "AUDUSDm", "pip_size": 0.0001, "digits": 5, "spread_pips": 1.2, "pip_value_per_lot": 10.00},
     "USD/CAD": {"mt5_name": "USDCADm", "pip_size": 0.0001, "digits": 5, "spread_pips": 1.5, "pip_value_per_lot": 7.40},
     "USD/CHF": {"mt5_name": "USDCHFm", "pip_size": 0.0001, "digits": 5, "spread_pips": 1.5, "pip_value_per_lot": 11.25},

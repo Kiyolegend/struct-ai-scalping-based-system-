@@ -45,21 +45,44 @@ import config
 # Values: "YYYY-MM-DD" UTC date string of the last fire
 # ─────────────────────────────────────────────────────────────────────────────
 
+import json as _json
+import os as _os
+
+_COOLDOWN_FILE = _os.path.join(_os.path.dirname(__file__), "..", "s6_cooldown.json")
 _fired_today: dict = {}
 
 
+def _load_cooldown() -> None:
+    global _fired_today
+    try:
+        if _os.path.exists(_COOLDOWN_FILE):
+            with open(_COOLDOWN_FILE, "r") as f:
+                _fired_today = _json.load(f)
+    except Exception:
+        _fired_today = {}
+
+
+def _save_cooldown() -> None:
+    try:
+        with open(_COOLDOWN_FILE, "w") as f:
+            _json.dump(_fired_today, f)
+    except Exception:
+        pass
+
+
 def _already_fired(symbol: str, boundary_side: str) -> bool:
-    """Returns True if S6 already fired on this symbol's boundary today (UTC)."""
-    key   = (symbol, boundary_side)
+    _load_cooldown()
+    key   = f"{symbol}|{boundary_side}"
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     return _fired_today.get(key) == today
 
 
 def _mark_fired(symbol: str, boundary_side: str) -> None:
-    """Record that S6 fired on this boundary today. Called only when signal is returned."""
-    key   = (symbol, boundary_side)
+    _load_cooldown()
+    key   = f"{symbol}|{boundary_side}"
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     _fired_today[key] = today
+    _save_cooldown()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
