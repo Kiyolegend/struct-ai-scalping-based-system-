@@ -17,14 +17,14 @@ Timeframe logic:
   5M       — BOS trigger + zone/level proximity + volatility check
 
 Firing windows (UTC):
-  London open : 08:00 – 09:30  (90 minutes)
-  NY open     : 13:00 – 14:30  (90 minutes)
+  London open : 07:00 – 08:30  (90 minutes, BST) / 08:00 – 09:30 (GMT)
+  NY open     : 12:00 – 13:30  (90 minutes, EDT) / 13:00 – 14:30 (EST)
 
-Scoring (max 110, minimum 80):
+Scoring (max 110, minimum 85):
   Session open window     — 25   (must be in first 90 min of London or NY)
   1H bias clear           — 20   (required — no neutral bias)
   4H alignment bonus      — 10   (optional — 4H agrees with 1H direction)
-  5M BOS within 45 min    — 20   (required — fresh structure break is the trigger)
+  5M BOS within 30 min    — 20   (required — fresh structure break is the trigger)
   Near key level          — 15   (Asian range edge, S/R level, or zone)
   Asian sweep bonus       — 10   (optional — price swept Asian range then BOS confirmed)
   Zone confluence bonus   — 10   (optional — price inside supply/demand zone)
@@ -44,7 +44,7 @@ import sys, os, math, time as _time
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-import config 
+import config
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -74,8 +74,9 @@ def _in_session_open_window() -> tuple[bool, str]:
         return True, "NY"
     return False, ""
 
+
 # ─────────────────────────────────────────────────────────────────────────────
-# Dead session volatility guard (ChatGPT feedback — volatility filter)
+# Dead session volatility guard
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _session_is_active(candles_5m: list) -> bool:
@@ -92,7 +93,7 @@ def _session_is_active(candles_5m: list) -> bool:
     if len(candles_5m) < 30:
         return True  # not enough data to judge — allow through
 
-    recent_ranges  = [c["high"] - c["low"] for c in candles_5m[-10:]]
+    recent_ranges   = [c["high"] - c["low"] for c in candles_5m[-10:]]
     baseline_ranges = [c["high"] - c["low"] for c in candles_5m[-30:-10]]
 
     avg_recent   = sum(recent_ranges)   / len(recent_ranges)
@@ -105,7 +106,7 @@ def _session_is_active(candles_5m: list) -> bool:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Asian sweep detection (ChatGPT feedback — sweep-aware filter)
+# Asian sweep detection
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _asian_sweep_bonus(candles_5m: list, direction: str, state: dict) -> int:
@@ -231,6 +232,7 @@ def check(state: dict, debug: bool = False) -> dict | None:
 
     if not in_window:
         if debug: print("    [S5] skip: not in London/NY open window (first 90 min of each session open)")
+        return None  # FIX 1: gate now actually stops execution outside session window
 
     session_score = 25
 
@@ -265,7 +267,6 @@ def check(state: dict, debug: bool = False) -> dict | None:
 
     alignment_bonus = 10 if b4h == direction else 0
 
-
     if debug:
         print(f"    [S5] direction={direction} 1H={b1h} 4H={b4h} "
               f"bias={bias_score} align_bonus={alignment_bonus}")
@@ -279,7 +280,7 @@ def check(state: dict, debug: bool = False) -> dict | None:
         c for c in choch_15m
         if isinstance(c, dict)
         and c.get("direction") == counter_direction
-        and (now_sec - c.get("time", 0)) <= 2 * 3600
+        and (now_sec - c.get("time", now_sec)) <= 2 * 3600
     ]
 
     if recent_counter:
@@ -287,29 +288,29 @@ def check(state: dict, debug: bool = False) -> dict | None:
             print(f"    [S5] skip: counter {counter_direction} CHoCH on 15M within 2h")
         return None
 
-    # ── Step 5: 5M BOS trigger — must be within last 45 minutes ──────────
+    # ── Step 5: 5M BOS trigger — must be within last 30 minutes ──────────
     bos_5m    = s5m.get("bos", [])
     fresh_bos = [
         b for b in bos_5m[-8:]
         if isinstance(b, dict)
         and b.get("direction") == direction
-        and (now_sec - b.get("time", now_sec)) <= 30 * 60
+        and (now_sec - b.get("time", 0)) <= 30 * 60
     ]
 
     if not fresh_bos:
-        if debug: print(f"    [S5] skip: no {direction} BOS on 5M within 45 min")
+        if debug: print(f"    [S5] skip: no {direction} BOS on 5M within 30 min")
         return None
 
     bos_score = 20
 
     if debug:
-        print(f"    [S5] fresh BOS: {len(fresh_bos)} event(s) within 45min")
+        print(f"    [S5] fresh BOS: {len(fresh_bos)} event(s) within 30min")
 
     # ── Step 6: Near a key level ──────────────────────────────────────────
     near_level = _near_key_level(price, state, pip, threshold_pips=15.0)
 
     if not near_level:
-        if debug: print("    [S5] skip: price not within 20 pips of Asian range / S/R / zone")
+        if debug: print("    [S5] skip: price not within 15 pips of Asian range / S/R / zone")
         return None
 
     level_score = 15
@@ -333,7 +334,7 @@ def check(state: dict, debug: bool = False) -> dict | None:
               f"align={alignment_bonus} bos={bos_score} level={level_score} "
               f"sweep={sweep_bonus} zone={zone_bonus} → {total_score}")
 
-        S5_MIN = 85
+    S5_MIN = 85  # FIX 2: moved outside if debug block — was causing NameError on every normal call
     if total_score < S5_MIN:
         if debug: print(f"    [S5] skip: score {total_score} < {S5_MIN}")
         return None
@@ -354,8 +355,8 @@ def check(state: dict, debug: bool = False) -> dict | None:
         return None
 
     if direction == "bullish":
-        sl_5m   = _last_label(s5m_struct,  "HL")
-        sl_15m  = _last_label(s15m_struct, "HL")
+        sl_5m     = _last_label(s5m_struct,  "HL")
+        sl_15m    = _last_label(s15m_struct, "HL")
         sl_anchor = sl_5m if sl_5m is not None else sl_15m
 
         if sl_anchor is None:
@@ -369,8 +370,8 @@ def check(state: dict, debug: bool = False) -> dict | None:
             if debug: print("    [S5] skip: SL not below entry for BUY")
             return None
     else:
-        sl_5m   = _last_label(s5m_struct,  "LH")
-        sl_15m  = _last_label(s15m_struct, "LH")
+        sl_5m     = _last_label(s5m_struct,  "LH")
+        sl_15m    = _last_label(s15m_struct, "LH")
         sl_anchor = sl_5m if sl_5m is not None else sl_15m
 
         if sl_anchor is None:
@@ -421,10 +422,10 @@ def check(state: dict, debug: bool = False) -> dict | None:
     reason = (
         f"{window_name} open momentum | "
         f"1H={b1h} 4H={b4h} | "
-        f"5M BOS {len(fresh_bos)}× within 45min | "
+        f"5M BOS {len(fresh_bos)}x within 30min | "
         f"near_level=✓ zone={'✓' if in_zone_ok else '✗'} {sweep_tag} | "
         f"{asia_ref} | "
-        f"spread={spread_pips}pip netRR={net_rr} score={total_score}/100"
+        f"spread={spread_pips}pip netRR={net_rr} score={total_score}/110"
     )
 
     return {

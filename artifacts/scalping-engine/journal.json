@@ -1,5 +1,27 @@
 [
   {
+    "id": "e975132d",
+    "timestamp": "2026-05-15 10:13 UTC",
+    "date": "2026-05-15",
+    "mode": "SIM",
+    "symbol": "USD/CAD",
+    "direction": "BUY",
+    "strategy": "ICT OB/FVG Zone Reaction",
+    "confidence": 80,
+    "entry": 1.37448,
+    "sl": 1.37305,
+    "tp": 1.37734,
+    "sl_pips": 14.3,
+    "tp_pips": 28.6,
+    "rr": 2.0,
+    "lot": 0.01,
+    "pnl_win": 2.12,
+    "pnl_loss": -1.06,
+    "result": "W",
+    "pnl": 2.12,
+    "reason": "near 1H OB [1.37355-1.37420] | 5M CHoCH | 4H=bullish 1H=bullish | sess=['london'] | spread=1.5pip netRR=1.72 | score=80/115"
+  },
+  {
     "id": "55a3fa2b",
     "timestamp": "2026-05-15 09:09 UTC",
     "date": "2026-05-15",
@@ -17,8 +39,8 @@
     "lot": 0.01,
     "pnl_win": 2.9,
     "pnl_loss": -1.45,
-    "result": null,
-    "pnl": null,
+    "result": "W",
+    "pnl": 2.9,
     "reason": "near 1H OB [1.37388-1.37529]+FVG | 5M CHoCH | 4H=bullish 1H=bullish | sess=['london'] | spread=1.5pip netRR=1.79 | score=90/115"
   },
   {
@@ -39,8 +61,8 @@
     "lot": 0.01,
     "pnl_win": 3.83,
     "pnl_loss": -1.91,
-    "result": null,
-    "pnl": null,
+    "result": "W",
+    "pnl": 3.83,
     "reason": "near 1H OB [0.78465-0.78556] | 5M CHoCH | 4H=bullish 1H=bullish | sess=['london'] | spread=1.5pip netRR=1.76 | score=80/115"
   },
   {
