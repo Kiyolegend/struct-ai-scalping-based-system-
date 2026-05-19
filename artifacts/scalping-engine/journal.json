@@ -1,5 +1,28 @@
 [
   {
+    "id": "39e0d504",
+    "timestamp": "2026-05-19 18:30 UTC",
+    "date": "2026-05-19",
+    "mode": "SIM",
+    "symbol": "USD/JPY",
+    "direction": "BUY",
+    "strategy": "Liquidity Sweep Reversal Scalping",
+    "confidence": 100,
+    "entry": 158.993,
+    "sl": 158.808,
+    "tp": 159.363,
+    "sl_pips": 18.5,
+    "tp_pips": 37.0,
+    "rr": 2.0,
+    "lot": 0.02,
+    "pnl_win": 4.81,
+    "pnl_loss": -2.4,
+    "result": null,
+    "pnl": null,
+    "reason": "15M sweep=bullish(CHoCH) @ 158.88800 age=2.5h | 5M confirm=CHoCH | mkt=slight-trend | dist=10.5p prec=10pts | zone=\u2713 fresh=\u2713 sess=['ny'] | spread=1.0pip netRR=1.85 score=100/100",
+    "auto_monitor": true
+  },
+  {
     "id": "535a5fae",
     "timestamp": "2026-05-19 12:41 UTC",
     "date": "2026-05-19",
@@ -86,10 +109,10 @@
     "lot": 0.01,
     "pnl_win": 3.04,
     "pnl_loss": -1.52,
-    "result": null,
-    "pnl": null,
+    "result": "L",
+    "pnl": -1.52,
     "reason": "15M sweep=bullish(BOS) @ 1.34001 age=3.2h | 5M confirm=CHoCH | mkt=range | dist=7.2p prec=10pts | zone=\u2713 fresh=\u2713 sess=['london'] | spread=1.2pip netRR=1.78 score=85/100",
-    "auto_monitor": true
+    "auto_monitor": false
   },
   {
     "id": "dfd3b6e8",

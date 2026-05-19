@@ -79,12 +79,41 @@ engine_state = {
     "default_lot":   config.DEFAULT_LOT,
 }
 state_lock = threading.Lock()
+STATS_FILE    = os.path.join(os.path.dirname(__file__), "session_stats.json")
 
-session_stats = {
-    "trades_today":       0,
-    "consecutive_losses": 0,
-    "last_reset_date":    datetime.now(timezone.utc).date(),
-}
+
+def _load_session_stats() -> dict:
+    """Load today's session stats from disk. Resets to 0 if the saved date is not today."""
+    today = datetime.now(timezone.utc).date()
+    try:
+        if os.path.exists(STATS_FILE):
+            with open(STATS_FILE, "r") as f:
+                data = json.load(f)
+            if data.get("last_reset_date") == str(today):
+                return {
+                    "trades_today":       int(data.get("trades_today", 0)),
+                    "consecutive_losses": int(data.get("consecutive_losses", 0)),
+                    "last_reset_date":    today,
+                }
+    except Exception:
+        pass
+    return {"trades_today": 0, "consecutive_losses": 0, "last_reset_date": today}
+
+
+def _save_session_stats() -> None:
+    """Persist session stats to disk so they survive restarts within the same day."""
+    try:
+        with open(STATS_FILE, "w") as f:
+            json.dump({
+                "trades_today":       session_stats["trades_today"],
+                "consecutive_losses": session_stats["consecutive_losses"],
+                "last_reset_date":    str(session_stats["last_reset_date"]),
+            }, f)
+    except Exception:
+        pass
+
+
+session_stats = _load_session_stats()
 
 signal_memory = SignalMemory()
 
@@ -181,6 +210,9 @@ def _load_settings() -> None:
             if "min_confidence"          in s: config.MIN_CONFIDENCE          = int(s["min_confidence"])
             if "max_trades_per_day"      in s: config.MAX_TRADES_PER_DAY      = int(s["max_trades_per_day"])
             print(f"[SETTINGS] Restored saved settings from {SETTINGS_FILE}")
+            with state_lock:
+                engine_state["default_lot"] = config.DEFAULT_LOT
+                engine_state["target_rr"]   = config.TARGET_RR
     except Exception as e:
         print(f"[SETTINGS] Could not load settings: {e}")
 
@@ -211,6 +243,7 @@ def _reset_daily_stats_if_needed():
         session_stats["consecutive_losses"] = 0
         session_stats["last_reset_date"]    = today
         signal_memory.clear()
+        _save_session_stats()
 
 
 def _score_all_strategies(state: dict) -> list:
@@ -422,10 +455,7 @@ def run_engine_cycle():
         log_trade(approved_decision, executed=success, mode=mode_label)
         if success:
             session_stats["trades_today"] += 1
-            # ── BUG 5 FIX (part 1): reset consecutive losses when a trade
-            # fires successfully. The increment happens in set_journal_result
-            # when the user marks the trade as W or L.
-            session_stats["consecutive_losses"] = 0
+            _save_session_stats()
             signal_memory.record(approved_decision, best_state)
             _add_to_journal(approved_decision, lot, mode_label)
             trade_entry = {
@@ -507,6 +537,7 @@ def _auto_mark_result(tid: str, result: str) -> None:
                     session_stats["consecutive_losses"] += 1
                 else:
                     session_stats["consecutive_losses"] = 0
+                _save_session_stats()
                 break
 
 
@@ -851,14 +882,11 @@ def set_journal_result():
                 e["pnl"]          = e["pnl_win"] if result == "W" else e["pnl_loss"]
                 e["auto_monitor"] = False   # stop the watcher from re-marking this entry
                 matched = True
-                # ── BUG 5 FIX (part 2): update consecutive loss counter when
-                # the user marks a trade result. This is the only place the
-                # counter should be incremented — the engine resets it to 0
-                # when a new trade fires (see run_engine_cycle above).
                 if result == "L":
                     session_stats["consecutive_losses"] += 1
                 elif result == "W":
                     session_stats["consecutive_losses"] = 0
+                _save_session_stats()
                 break
         if not matched:
             return jsonify({"ok": False, "error": f"Trade {tid} not found"}), 404

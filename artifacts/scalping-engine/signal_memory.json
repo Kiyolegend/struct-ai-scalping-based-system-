@@ -1,1 +1,1 @@
-{"key": ["EUR/JPY", "ICT OB/FVG Zone Reaction", "BUY", 184.42], "bias": "neutral"}
+{"keys": {"EUR/JPY": {"key": ["EUR/JPY", "ICT OB/FVG Zone Reaction", "BUY", 184.42], "bias": "neutral"}, "USD/JPY": {"key": ["USD/JPY", "Liquidity Sweep Reversal Scalping", "BUY", 158.808], "bias": "bullish"}}}

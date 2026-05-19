@@ -1,6 +1,6 @@
 {
   "target_rr": 2.0,
-  "default_lot": 0.01,
+  "default_lot": 0.02,
   "min_sl_pips": 7,
   "sl_buffer_pips": 5,
   "sweep_sl_buffer_pips": 8,

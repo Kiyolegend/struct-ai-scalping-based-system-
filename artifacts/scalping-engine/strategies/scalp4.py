@@ -299,21 +299,7 @@ def _has_zone_anchor(breakout_edge: float, state: dict, s5m: dict,
             if abs(breakout_edge - center) <= threshold:
                 return True, f"zone[{bottom:.5f}-{top:.5f}]"
 
-    # ── 3. Order blocks (5M + 15M) ────────────────────────────────────────
-    for tf_data in (s5m, s15m):
-        obs = tf_data.get("ob") or []
-        if not isinstance(obs, list):
-            continue
-        for ob in obs:
-            if not isinstance(ob, dict):
-                continue
-            top    = ob.get("top")    or ob.get("high") or 0
-            bottom = ob.get("bottom") or ob.get("low")  or 0
-            if top == 0 and bottom == 0:
-                continue
-            center = (top + bottom) / 2
-            if abs(breakout_edge - center) <= threshold:
-                return True, f"OB[{bottom:.5f}-{top:.5f}]"
+    
 
     return False, ""
 
