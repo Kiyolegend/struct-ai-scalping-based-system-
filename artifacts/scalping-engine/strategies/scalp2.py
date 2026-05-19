@@ -73,7 +73,7 @@ def check(state: dict, debug: bool = False) -> dict | None:
     market_score = 15 if not slightly_trending else 5
 
     # ── Step 2: Sweep detection on 15M — 24h staleness window ────────────
-    SWEEP_MAX_AGE = 6 * 3600
+    SWEEP_MAX_AGE = 24 * 3600
 
     bos_15m   = s15m.get("bos",   [])
     choch_15m = s15m.get("choch", [])
@@ -153,12 +153,12 @@ def check(state: dict, debug: bool = False) -> dict | None:
     conf_choch = next(
         (c for c in sorted(choch_5m, key=lambda x: x.get("time", 0), reverse=True)
          if isinstance(c, dict) and c.get("direction") == direction
-         and (now_sec - c.get("time", 0)) <= 3600), None
+         and (now_sec - c.get("time", 0)) <= 2 * 3600), None
     )
     conf_bos = next(
         (b for b in sorted(bos_5m, key=lambda x: x.get("time", 0), reverse=True)
          if isinstance(b, dict) and b.get("direction") == direction
-         and (now_sec - b.get("time", 0)) <= 3600), None
+         and (now_sec - b.get("time", 0)) <= 2 * 3600), None
     )
 
     if conf_choch:

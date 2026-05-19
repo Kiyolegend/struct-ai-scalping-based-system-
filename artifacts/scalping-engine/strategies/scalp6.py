@@ -236,7 +236,7 @@ def _find_asian_choch(s5m: dict, direction: str,
         candle = next((k for k in candles_5m if k.get("time") == c_time), None)
 
         if candle is None:
-            return c
+            return None
 
         rng  = candle.get("high", 0) - candle.get("low", 0)
         body = abs(candle.get("close", 0) - candle.get("open", 0))
