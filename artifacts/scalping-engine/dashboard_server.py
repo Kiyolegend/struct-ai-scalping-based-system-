@@ -259,6 +259,7 @@ def _score_all_strategies(state: dict) -> list:
                     "fired":     result.get("trade", False),
                     "reason":    result.get("reason", ""),
                     "direction": result.get("type", ""),
+                    "_result":   result,
                 })
             else:
                 scores.append({
@@ -267,6 +268,7 @@ def _score_all_strategies(state: dict) -> list:
                     "fired":     False,
                     "reason":    "Conditions not met",
                     "direction": "",
+                    "_result":   None,
                 })
         except Exception as ex:
             scores.append({
@@ -275,6 +277,7 @@ def _score_all_strategies(state: dict) -> list:
                 "fired":     False,
                 "reason":    f"Error: {ex}",
                 "direction": "",
+                "_result":   None,
             })
     return scores
 
@@ -343,19 +346,12 @@ def _scan_symbol(sym: str) -> tuple[dict | None, list, dict | None]:
 
     decision = None
     if signals:
-        best = signals[0]
-        for name, strategy_fn in STRATEGIES:
-            best_name = (best.get("name") or "")
-            if name == best_name or best_name.lower().replace(" ", "_") in name.lower():
-                try:
-                    result = strategy_fn(market_state, debug=force_fire)
-                    if result and result.get("trade"):
-                        decision = result
-                        decision["symbol"]     = sym
-                        decision["force_fire"] = force_fire
-                        break
-                except Exception:
-                    pass
+        best   = signals[0]
+        cached = best.get("_result")
+        if cached and cached.get("trade"):
+            decision               = cached
+            decision["symbol"]     = sym
+            decision["force_fire"] = force_fire
 
         # Force-fire fallback: build a minimal decision from the top score even if check() returned None
         if force_fire and decision is None:
@@ -502,7 +498,11 @@ def run_engine_cycle():
 
     # Update price tracker so outcome watcher can detect SIM trade results
     with prices_lock:
-        symbol_prices[best_sym] = best_state.get("current_price") or 0
+        for _sym, (_mstate, _, _) in parallel_results:
+            if _mstate is not None:
+                _p = _mstate.get("current_price")
+                if _p:
+                    symbol_prices[_sym] = _p
 
 
 def engine_loop():

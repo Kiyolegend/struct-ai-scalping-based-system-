@@ -70,8 +70,10 @@ def _save_cooldown() -> None:
         pass
 
 
+_load_cooldown()  # load once at import time — not on every cycle
+
+
 def _already_fired(symbol: str, boundary_side: str) -> bool:
-    _load_cooldown()
     key   = f"{symbol}|{boundary_side}"
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     return _fired_today.get(key) == today
@@ -236,7 +238,7 @@ def _find_asian_choch(s5m: dict, direction: str,
         candle = next((k for k in candles_5m if k.get("time") == c_time), None)
 
         if candle is None:
-            return None
+            continue
 
         rng  = candle.get("high", 0) - candle.get("low", 0)
         body = abs(candle.get("close", 0) - candle.get("open", 0))
