@@ -235,9 +235,8 @@ def check(state: dict, debug: bool = False) -> dict | None:
     candles_4h = s4h.get("candles", [])
 
     if not candles_1h:
-        if debug: print("    [S3] skip: no 1H candles available")
+        print("    [S3] WARN: no 1H candles from STRUCT.ai — skipping (API issue?)")
         return None
-
     # ── Step 1: HTF direction ─────────────────────────────────────────────
     b4h = bias.get("4h", "neutral")
     b1h = bias.get("1h", "neutral")
