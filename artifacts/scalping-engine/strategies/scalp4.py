@@ -189,19 +189,19 @@ def _detect_fvg(candles: list, direction: str, price: float) -> bool:
     if len(candles) < 3:
         return False
 
-    for i in range(2, min(len(candles), 7)):
-        c_prev2 = candles[-(i + 1)]
-        c_curr  = candles[-i]
+    for i in range(1, min(len(candles) - 1, 6)):
+        candle_a = candles[-(i + 2)]
+        candle_c = candles[-i]
 
         if direction == "bullish":
-            gap_bottom = c_prev2.get("high", 0)
-            gap_top    = c_curr.get("low",   0)
+            gap_bottom = candle_a.get("high", 0)
+            gap_top    = candle_c.get("low",   0)
             if gap_top > gap_bottom and gap_bottom <= price <= gap_top:
                 return True
 
         elif direction == "bearish":
-            gap_top    = c_prev2.get("low",  0)
-            gap_bottom = c_curr.get("high",  0)
+            gap_top    = candle_a.get("low",  0)
+            gap_bottom = candle_c.get("high",  0)
             if gap_bottom < gap_top and gap_bottom <= price <= gap_top:
                 return True
 

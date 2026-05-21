@@ -334,14 +334,10 @@ def check(state: dict, debug: bool = False) -> dict | None:
               f"align={alignment_bonus} bos={bos_score} level={level_score} "
               f"sweep={sweep_bonus} zone={zone_bonus} → {total_score}")
 
-    S5_MIN = 85  # FIX 2: moved outside if debug block — was causing NameError on every normal call
-    if total_score < S5_MIN:
-        if debug: print(f"    [S5] skip: score {total_score} < {S5_MIN}")
-        return None
-
-    if total_score < config.MIN_CONFIDENCE:
-        if debug: print(f"    [S5] skip: score {total_score} < {config.MIN_CONFIDENCE}")
-        return None
+    effective_min = max(85, config.MIN_CONFIDENCE)
+    if total_score < effective_min:
+     print(f"    [S5] skip: score {total_score} < {effective_min} (S5_MIN=85, MIN_CONFIDENCE={config.MIN_CONFIDENCE})")
+    return None
 
     # ── SL / TP ───────────────────────────────────────────────────────────
     buf         = config.SL_BUFFER_PIPS * pip
