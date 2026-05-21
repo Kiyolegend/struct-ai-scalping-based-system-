@@ -446,11 +446,12 @@ def check(state: dict, debug: bool = False) -> dict | None:
     tp = (price + sl_dist * config.TARGET_RR if direction == "bullish"
           else price - sl_dist * config.TARGET_RR)
 
-    spread_pips   = config.get_spread_pips(symbol)
-    spread_amount = spread_pips * pip
-    net_tp_dist   = max(abs(tp - price) - spread_amount, 0.0)
-    net_sl_dist   = sl_dist + spread_amount
-    net_rr        = round(net_tp_dist / net_sl_dist, 2) if net_sl_dist > 0 else 0
+    total_cost_pips = config.get_total_cost_pips(symbol)
+    spread_pips     = config.get_spread_pips(symbol)   # kept for logging
+    cost_amount     = total_cost_pips * pip
+    net_tp_dist     = max(abs(tp - price) - cost_amount, 0.0)
+    net_sl_dist     = sl_dist + cost_amount
+    net_rr          = round(net_tp_dist / net_sl_dist, 2) if net_sl_dist > 0 else 0
 
     if abs(tp - price) / sl_dist < 1.5:
         if debug: print("    [S6] REJECTED: raw RR < 1.5")
@@ -489,4 +490,5 @@ def check(state: dict, debug: bool = False) -> dict | None:
         "rr":          config.TARGET_RR,
         "net_rr":      net_rr,
         "spread_pips": spread_pips,
+        "total_cost_pips":  total_cost_pips,
     }

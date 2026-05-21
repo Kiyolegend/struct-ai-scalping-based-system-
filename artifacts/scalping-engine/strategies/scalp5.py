@@ -392,11 +392,12 @@ def check(state: dict, debug: bool = False) -> dict | None:
     sl      = round(sl, 5)
     tp      = round(tp, 5)
 
-    spread_pips   = config.get_spread_pips(state.get("symbol"))
-    spread_amount = spread_pips * pip
-    net_tp_dist   = max(abs(tp - price) - spread_amount, 0.0)
-    net_sl_dist   = sl_dist + spread_amount
-    net_rr        = round(net_tp_dist / net_sl_dist, 2) if net_sl_dist > 0 else 0
+    total_cost_pips = config.get_total_cost_pips(state.get("symbol"))
+    spread_pips     = config.get_spread_pips(state.get("symbol"))   # kept for logging
+    cost_amount     = total_cost_pips * pip
+    net_tp_dist     = max(abs(tp - price) - cost_amount, 0.0)
+    net_sl_dist     = sl_dist + cost_amount
+    net_rr          = round(net_tp_dist / net_sl_dist, 2) if net_sl_dist > 0 else 0
 
     # ── Post filters ──────────────────────────────────────────────────────
     if sl_dist < config.MIN_SL_PIPS * pip:
@@ -440,4 +441,5 @@ def check(state: dict, debug: bool = False) -> dict | None:
         "rr":          rr,
         "net_rr":      net_rr,
         "spread_pips": spread_pips,
+        "total_cost_pips":  total_cost_pips,
     }

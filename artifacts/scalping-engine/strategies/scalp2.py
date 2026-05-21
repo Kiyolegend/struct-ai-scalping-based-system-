@@ -4,22 +4,26 @@ Strategy 2 — Liquidity Sweep Reversal Scalping
 Exploit liquidity grabs (fake breakouts) where price sweeps previous
 highs/lows, traps traders, then reverses.
 
-Tightening applied (post Session 2):
-  - BOS + BOS combo rejected — at least one CHOCH required on either
-    the sweep or the 5M confirmation (raises minimum quality floor).
-  - Sweep freshness bonus: sweeps within 4h score +5 extra pts.
-  - BOS sweeps require London/NY session — no session = no BOS sweep entry.
-  - BOS sweeps require 7-pip minimum recovery (vs 5 pip for CHOCH sweeps).
-  - Staleness window: 24h (was 12h — reverted to allow signals).
+Tightening applied (post live trading review):
+  - BOS + BOS combo rejected — at least one CHoCH required.
+  - CHoCH sweeps: max age 6h. BOS sweeps: max age 2h.
+    (Was 24h — root cause of most stale-sweep losses.)
+  - 5M confirmation window tightened from 2h → 1h.
+  - Hard reject: sweep older than 4h AND entry >15p from sweep level.
+    (Stale + far = double-weak, always reject.)
+  - Freshness bonus tiered: <2h = +10pts, 2-4h = +5pts, >4h = 0.
+  - Net RR now uses total cost (spread + Nexus commission pip gap).
+  - BOS sweeps require London/NY session.
+  - BOS sweeps require 7-pip minimum recovery (CHoCH = 5 pip).
 
-Scoring (max 105):
-  Sweep quality   — 25 (CHOCH) or 10 (BOS) — BOS+BOS combo rejected
+Scoring (max 125):
+  Sweep quality    — 25 (CHoCH) or 10 (BOS) — BOS+BOS combo rejected
   Reversal confirm — 25 (5M CHoCH) or 10 (5M BOS)
   Market condition — 15 (ranging) or 5 (slight trend)
   Entry precision  — 15 (≤5p) / 10 (≤15p) / 5 (>15p from sweep)
   Zone confluence  — 10
   Session timing   — 10
-  Freshness bonus  — 5 (sweep within 4h)
+  Freshness bonus  — 10 (<2h) / 5 (2–4h) / 0 (>4h)
 
   Minimum to fire  : 80
 """
@@ -72,20 +76,24 @@ def check(state: dict, debug: bool = False) -> dict | None:
 
     market_score = 15 if not slightly_trending else 5
 
-    # ── Step 2: Sweep detection on 15M — 24h staleness window ────────────
-    SWEEP_MAX_AGE = 24 * 3600
+    # ── Step 2: Sweep detection on 15M — tightened staleness windows ─────
+    # CHoCH sweeps: max 6h (high-quality structural event, can age slightly)
+    # BOS sweeps  : max 2h (lower quality — must be very fresh to be valid)
+    # Old value was 24h, which was the root cause of most stale-sweep losses.
+    CHOCH_SWEEP_MAX_AGE = 6 * 3600
+    BOS_SWEEP_MAX_AGE   = 2 * 3600
 
     bos_15m   = s15m.get("bos",   [])
     choch_15m = s15m.get("choch", [])
 
-    bearish_choch = _best_sweep(choch_15m, "direction", "bearish", SWEEP_MAX_AGE)
-    bearish_bos   = _best_sweep(bos_15m,   "direction", "bearish", SWEEP_MAX_AGE)
-    bullish_choch = _best_sweep(choch_15m, "direction", "bullish", SWEEP_MAX_AGE)
-    bullish_bos   = _best_sweep(bos_15m,   "direction", "bullish", SWEEP_MAX_AGE)
+    bearish_choch = _best_sweep(choch_15m, "direction", "bearish", CHOCH_SWEEP_MAX_AGE)
+    bearish_bos   = _best_sweep(bos_15m,   "direction", "bearish", BOS_SWEEP_MAX_AGE)
+    bullish_choch = _best_sweep(choch_15m, "direction", "bullish", CHOCH_SWEEP_MAX_AGE)
+    bullish_bos   = _best_sweep(bos_15m,   "direction", "bullish", BOS_SWEEP_MAX_AGE)
 
     def _pick(choch_item, bos_item):
         if choch_item and bos_item:
-            if bos_item.get("time", 0) - choch_item.get("time", 0) <= 2 * 3600:
+            if abs(bos_item.get("time", 0) - choch_item.get("time", 0)) <= 2 * 3600:
                 return choch_item
             return choch_item if choch_item.get("time", 0) > bos_item.get("time", 0) else bos_item
         return choch_item or bos_item
@@ -105,8 +113,8 @@ def check(state: dict, debug: bool = False) -> dict | None:
     sell_sweep_price = sell_sweep_item.get("price") if sell_sweep_item else None
 
     # ── Step 3: Verify reversal — minimum recovery check ─────────────────
-    pip          = config.get_symbol_cfg(state.get("symbol"))["pip_size"]
-    near_pips    = config.NEAR_LEVEL_PIPS
+    pip           = config.get_symbol_cfg(state.get("symbol"))["pip_size"]
+    near_pips     = config.NEAR_LEVEL_PIPS
     base_recovery = config.MIN_SWEEP_RECOVERY_PIPS * pip   # 5 pips (CHOCH sweeps)
     bos_recovery  = 7 * pip                                 # 7 pips (BOS sweeps — tighter)
 
@@ -150,22 +158,26 @@ def check(state: dict, debug: bool = False) -> dict | None:
     bos_5m   = s5m.get("bos",   [])
     choch_5m = s5m.get("choch", [])
 
+    # 5M confirmation window tightened from 2h → 1h.
+    # A CHoCH/BOS from 90+ minutes ago is no longer a valid trigger.
+    CONFIRM_MAX_AGE = 1 * 3600
+
     conf_choch = next(
         (c for c in sorted(choch_5m, key=lambda x: x.get("time", 0), reverse=True)
          if isinstance(c, dict) and c.get("direction") == direction
-         and (now_sec - c.get("time", 0)) <= 2 * 3600), None
+         and (now_sec - c.get("time", 0)) <= CONFIRM_MAX_AGE), None
     )
     conf_bos = next(
         (b for b in sorted(bos_5m, key=lambda x: x.get("time", 0), reverse=True)
          if isinstance(b, dict) and b.get("direction") == direction
-         and (now_sec - b.get("time", 0)) <= 2 * 3600), None
+         and (now_sec - b.get("time", 0)) <= CONFIRM_MAX_AGE), None
     )
 
     if conf_choch:
-        reversal_score  = 25
+        reversal_score   = 25
         is_choch_confirm = True
     elif conf_bos:
-        reversal_score  = 10
+        reversal_score   = 10
         is_choch_confirm = False
     else:
         if debug: print(f"    [S2] skip: no {direction} CHoCH/BOS on 5M within 1h")
@@ -190,6 +202,16 @@ def check(state: dict, debug: bool = False) -> dict | None:
         precision_score = 10
     else:
         precision_score = 5
+
+    # ── Hard gate: stale sweep + far entry = always reject ────────────────
+    # A sweep older than 4h with an entry more than 15p away is double-weak.
+    # The institutional intent behind the sweep has likely already expired.
+    sweep_age_secs_early = now_sec - sweep_item.get("time", now_sec) if sweep_item else 99999
+    if sweep_age_secs_early > 4 * 3600 and dist_pips_sw > 15:
+        if debug:
+            print(f"    [S2] skip: stale sweep ({sweep_age_secs_early//3600}h) "
+                  f"+ far entry ({dist_pips_sw:.1f}p) — double-weak setup rejected")
+        return None
 
     # ── Step 6: Zone confluence ───────────────────────────────────────────
     zones_5m  = s5m.get("zones")  or []
@@ -225,10 +247,15 @@ def check(state: dict, debug: bool = False) -> dict | None:
 
     session_score = 10 if in_active_session else 0
 
-    # ── Step 8: Sweep freshness bonus ─────────────────────────────────────
+    # ── Step 8: Sweep freshness bonus (tiered) ────────────────────────────
     sweep_age_secs = now_sec - sweep_item.get("time", now_sec) if sweep_item else 99999
-    freshness_bonus = 5 if sweep_age_secs <= 4 * 3600 else 0
-    
+    if sweep_age_secs <= 2 * 3600:
+        freshness_bonus = 10
+    elif sweep_age_secs <= 4 * 3600:
+        freshness_bonus = 5
+    else:
+        freshness_bonus = 0
+
     # ── Step 8b: HTF directional alignment bonus ──────────────────────────
     htf_bonus = 0
     if direction == "bullish":
@@ -239,8 +266,8 @@ def check(state: dict, debug: bool = False) -> dict | None:
         if b4h == "bearish": htf_bonus += 5
 
     # ── Step 8c: S/R level proximity bonus ───────────────────────────────
-    sr_bonus    = 0
-    sr_levels   = state.get("sr_levels", []) or []
+    sr_bonus     = 0
+    sr_levels    = state.get("sr_levels", []) or []
     sr_threshold = 10 * pip
     for level in sr_levels:
         if not isinstance(level, dict): continue
@@ -250,7 +277,7 @@ def check(state: dict, debug: bool = False) -> dict | None:
             break
 
     if debug and freshness_bonus:
-        print(f"    [S2] fresh sweep ({sweep_age_secs//3600}h old) → +5 bonus")
+        print(f"    [S2] fresh sweep ({sweep_age_secs//3600}h old) → +{freshness_bonus} bonus")
 
     # ── Total score ───────────────────────────────────────────────────────
     total_score = (sweep_score + reversal_score + market_score +
@@ -288,11 +315,14 @@ def check(state: dict, debug: bool = False) -> dict | None:
     sl      = round(sl, 5)
     tp      = round(tp, 5)
 
-    spread_pips   = config.get_spread_pips(state.get("symbol"))
-    spread_amount = spread_pips * pip
-    net_tp_dist   = max(abs(tp - price) - spread_amount, 0.0)
-    net_sl_dist   = sl_dist + spread_amount
-    net_rr        = round(net_tp_dist / net_sl_dist, 2) if net_sl_dist > 0 else 0
+    # Use TOTAL cost (spread + Nexus commission) not just spread alone.
+    # Commission values per pair are configured in config.SYMBOL_CONFIG.
+    total_cost_pips = config.get_total_cost_pips(state.get("symbol"))
+    spread_pips     = config.get_spread_pips(state.get("symbol"))   # kept for logging
+    cost_amount     = total_cost_pips * pip
+    net_tp_dist     = max(abs(tp - price) - cost_amount, 0.0)
+    net_sl_dist     = sl_dist + cost_amount
+    net_rr          = round(net_tp_dist / net_sl_dist, 2) if net_sl_dist > 0 else 0
 
     # ── Post filters ──────────────────────────────────────────────────────
     if dist_pips_sw > 25:
@@ -338,19 +368,20 @@ def check(state: dict, debug: bool = False) -> dict | None:
         f"dist={dist_pips_sw:.1f}p prec={precision_score}pts | "
         f"zone={'✓' if zone_ok else '✗'} fresh={'✓' if freshness_bonus else '✗'} "
         f"sess={sessions} | "
-        f"spread={spread_pips}pip netRR={net_rr} score={total_score}/100"
+        f"spread={spread_pips}p+comm={total_cost_pips - spread_pips}p=cost={total_cost_pips}p netRR={net_rr} score={total_score}/125"
     )
 
     return {
-        "trade":       True,
-        "type":        trade_type,
-        "confidence":  total_score,
-        "strategy":    "Liquidity Sweep Reversal Scalping",
-        "reason":      reason,
-        "entry":       price,
-        "sl":          sl,
-        "tp":          tp,
-        "rr":          rr,
-        "net_rr":      net_rr,
-        "spread_pips": spread_pips,
+        "trade":            True,
+        "type":             trade_type,
+        "confidence":       total_score,
+        "strategy":         "Liquidity Sweep Reversal Scalping",
+        "reason":           reason,
+        "entry":            price,
+        "sl":               sl,
+        "tp":               tp,
+        "rr":               rr,
+        "net_rr":           net_rr,
+        "spread_pips":      spread_pips,
+        "total_cost_pips":  total_cost_pips,
     }
