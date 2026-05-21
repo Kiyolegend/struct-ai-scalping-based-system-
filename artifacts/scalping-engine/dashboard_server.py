@@ -33,6 +33,7 @@ from risk.manager import validate, get_lot_size
 from execution.simulator import place_order as sim_order
 from logger import log_trade
 from signal_memory import SignalMemory
+from news_filter import is_safe_to_trade
 
 try:
     from execution.mt5_executor import place_order as live_order
@@ -75,6 +76,7 @@ engine_state = {
     "last_update":   None,
     "next_scan_in":  config.LOOP_INTERVAL,
     "cycle_count":   0,
+    "news_block":    "",
     "target_rr":     config.TARGET_RR,
     "default_lot":   config.DEFAULT_LOT,
 }
@@ -390,9 +392,27 @@ def _scan_symbol(sym: str) -> tuple[dict | None, list, dict | None]:
 
 def run_engine_cycle():
     _reset_daily_stats_if_needed()
+    
+     
+
+    # ── News filter — block entire cycle if in a high-impact window ───────
+    safe, news_reason = is_safe_to_trade()
+    if not safe:
+        print(f"[NEWS] ⏸  Blocked: {news_reason}")
+        with state_lock:
+            engine_state["status"]      = "news_block"
+            engine_state["news_block"]  = news_reason
+            engine_state["last_update"] = datetime.now(timezone.utc).strftime("%H:%M:%S UTC")
+        return
+    else:
+        with state_lock:
+            engine_state["news_block"] = ""
+    # ─────────────────────────────────────────────────────────────────────
 
     with state_lock:
         engine_state["status"] = "scanning"
+
+    
 
     scan_symbols = config.SCAN_SYMBOLS
     print(f"\n[ENGINE] Scanning {len(scan_symbols)} symbols: {', '.join(scan_symbols)}")

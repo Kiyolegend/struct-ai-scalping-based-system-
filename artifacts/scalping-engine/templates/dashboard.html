@@ -62,6 +62,7 @@
     .badge-error    { background: rgba(248,81,73,.15);  color: var(--red);  border:1px solid rgba(248,81,73,.3); }
     .badge-sim      { background: rgba(210,153,34,.15); color: var(--yellow); border:1px solid rgba(210,153,34,.3); }
     .badge-live     { background: rgba(248,81,73,.15);  color: var(--red);  border:1px solid rgba(248,81,73,.3); }
+    .badge-news_block { background: rgba(210,153,34,.15); color: var(--yellow); border:1px solid rgba(210,153,34,.3); }
 
     .header-price { text-align: right; }
     .price-value { font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; }
@@ -758,6 +759,11 @@
         —
       </div>
     </div>
+    <!-- ── News Block Banner (hidden until news_block status fires) ── -->
+    <div id="newsBlockBanner" style="display:none;margin-top:12px;padding:8px 10px;background:rgba(210,153,34,.1);border:1px solid rgba(210,153,34,.3);border-radius:6px;">
+      <div style="font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--yellow);margin-bottom:4px;">⏸ News Block Active</div>
+      <div id="newsBlockReason" style="font-size:11px;color:var(--muted);"></div>
+    </div>
   </div>
 
 </div>
@@ -979,18 +985,18 @@
       document.getElementById('lotWarnModal').classList.remove('hidden');
       return;
     }
-    _applyLotSelect(val);
+    _applyLotSelection(val);
   }
   function confirmLot() {
     document.getElementById('lotWarnModal').classList.add('hidden');
-    if (pendingLotConfirm !== null) _applyLotSelect(pendingLotConfirm);
+    if (pendingLotConfirm !== null) _applyLotSelection(pendingLotConfirm);
     pendingLotConfirm = null;
   }
   function cancelLot() {
     document.getElementById('lotWarnModal').classList.add('hidden');
     pendingLotConfirm = null;
   }
-  function _applyLotSelect(val) {
+  function _applyLotSelection(val) {
     pendingLot = val;
     document.getElementById('lotBtnText').textContent = val.toFixed(2);
     document.getElementById('lotBtn').classList.add('pending');
@@ -1109,7 +1115,7 @@
 
         // Status badge
         const sb = document.getElementById('statusBadge');
-        sb.textContent = (d.status || 'unknown').toUpperCase();
+        sb.textContent = (d.status || 'unknown').toUpperCase().replace('_', ' ');
         sb.className   = 'badge badge-' + (d.status || 'error');
 
         // Mode badge
@@ -1180,10 +1186,24 @@
 
         // Engine status
         const cycleCount = d.cycle_count || 0;
+        const statusText = d.status === 'running'    ? '✅ Running normally'
+                         : d.status === 'news_block' ? '⏸ News window — cycle paused'
+                         : d.status === 'error'      ? '❌ Error state'
+                         : '⏳ ' + d.status;
         document.getElementById('engineStatus').innerHTML =
           `<span style="color:var(--text)">Cycle #${cycleCount}</span><br>
-           <span style="font-size:11px;">${d.status === 'running' ? '✅ Running normally' : d.status === 'error' ? '❌ Error state' : '⏳ ' + d.status}</span>`;
+           <span style="font-size:11px;">${statusText}</span>`;
         document.getElementById('lastBlock').textContent = d.last_block || '—';
+
+        // News block banner
+        const nb     = document.getElementById('newsBlockBanner');
+        const nbText = document.getElementById('newsBlockReason');
+        if (d.status === 'news_block' && d.news_block) {
+          nb.style.display   = 'block';
+          nbText.textContent = d.news_block;
+        } else {
+          nb.style.display = 'none';
+        }
       })
       .catch(() => {
         document.getElementById('statusBadge').textContent = 'OFFLINE';

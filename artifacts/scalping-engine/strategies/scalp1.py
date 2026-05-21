@@ -11,6 +11,13 @@ Session 2 fixes applied:
   - 1h freshness check on 5M BOS events
   - Tighter distance scoring: 15/10/5 at ≤5/≤10/≤15 pips
   - Counter CHoCH window: 4h look-back with time check
+
+Session 3 refinements applied:
+  - Minimum score raised from 80 → 85 (forces stronger confluence)
+  - 5M BOS freshness tightened from 2h → 1h (no stale triggers)
+  - Distance hard reject tightened from >15p → >10p (no chase entries)
+  - Distance scoring: ≤15p tier (5pts) removed — 10p is now the outer limit
+  - Counter-BOS filter added: any counter-direction 5M BOS within 30min = skip
 """
 
 import sys, os, math, time as _time
@@ -137,8 +144,6 @@ def check(state: dict, debug: bool = False) -> dict | None:
         location_score = 15
     elif dist_pips <= 10:
         location_score = 10
-    elif dist_pips <= 15:
-        location_score = 5
     else:
         location_score = 0
 
@@ -148,7 +153,7 @@ def check(state: dict, debug: bool = False) -> dict | None:
         b for b in bos_5m[-6:]
         if isinstance(b, dict)
         and b.get("direction") == direction
-        and (now_sec - b.get("time", now_sec)) <= 2 * 3600
+        and (now_sec - b.get("time", now_sec)) <= 1 * 3600
     ]
 
     if not matching_bos:
@@ -156,6 +161,20 @@ def check(state: dict, debug: bool = False) -> dict | None:
         return None
 
     bos_score = 20 if len(matching_bos) >= 2 else 10
+
+    # ── Step 5b: Counter-BOS rejection ───────────────────────────────────
+    # If a counter-direction BOS fired on 5M in the last 30 minutes, the
+    # structure is two-sided — directional conviction is weak. Skip.
+    counter_dir = "bearish" if direction == "bullish" else "bullish"
+    counter_bos = [
+        b for b in bos_5m[-6:]
+        if isinstance(b, dict)
+        and b.get("direction") == counter_dir
+        and (now_sec - b.get("time", now_sec)) <= 30 * 60
+    ]
+    if counter_bos:
+        if debug: print(f"    [S1] skip: counter {counter_dir} BOS on 5M within 30min")
+        return None
 
     # ── Step 6: Session timing ────────────────────────────────────────────
     sessions       = state.get("sessions", [])
@@ -219,8 +238,8 @@ def check(state: dict, debug: bool = False) -> dict | None:
         print(f"    [S1] {direction} | bias={bias_score} pb={pullback_score} bos={bos_score} "
               f"loc={location_score} sess={session_score} zone={zone_score} → {total_score}")
 
-    if total_score < config.MIN_CONFIDENCE:
-        if debug: print(f"    [S1] skip: score {total_score} < {config.MIN_CONFIDENCE}")
+    if total_score < 85:
+        if debug: print(f"    [S1] skip: score {total_score} < 85")
         return None
 
     # ── SL / TP ───────────────────────────────────────────────────────────
@@ -293,8 +312,8 @@ def check(state: dict, debug: bool = False) -> dict | None:
     net_sl_dist     = sl_dist + cost_amount
     net_rr          = round(net_tp_dist / net_sl_dist, 2) if net_sl_dist > 0 else 0
     # ── Post filters ──────────────────────────────────────────────────────
-    if dist_pips > 15:
-        print(f"    [S1] REJECTED: {dist_pips:.1f}p from pullback (>15p hard limit)")
+    if dist_pips > 10:
+        print(f"    [S1] REJECTED: {dist_pips:.1f}p from pullback (>10p hard limit)")
         return None
 
     if sl_dist < config.MIN_SL_PIPS * pip:
