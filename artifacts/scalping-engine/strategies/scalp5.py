@@ -336,8 +336,8 @@ def check(state: dict, debug: bool = False) -> dict | None:
 
     effective_min = max(85, config.MIN_CONFIDENCE)
     if total_score < effective_min:
-     print(f"    [S5] skip: score {total_score} < {effective_min} (S5_MIN=85, MIN_CONFIDENCE={config.MIN_CONFIDENCE})")
-    return None
+       print(f"    [S5] skip: score {total_score} < {effective_min} (S5_MIN=85, MIN_CONFIDENCE={config.MIN_CONFIDENCE})")
+       return None
 
     # ── SL / TP ───────────────────────────────────────────────────────────
     buf         = config.SL_BUFFER_PIPS * pip

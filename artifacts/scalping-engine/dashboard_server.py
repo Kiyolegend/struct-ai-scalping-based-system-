@@ -33,7 +33,7 @@ from risk.manager import validate, get_lot_size
 from execution.simulator import place_order as sim_order
 from logger import log_trade
 from signal_memory import SignalMemory
-from news_filter import is_safe_to_trade
+from news_filter import is_safe_to_trade, is_global_blocked, is_symbol_blocked, get_upcoming_blocked_days
 
 try:
     from execution.mt5_executor import place_order as live_order
@@ -116,6 +116,7 @@ def _save_session_stats() -> None:
 
 
 session_stats = _load_session_stats()
+stats_lock    = threading.Lock()
 
 signal_memory = SignalMemory()
 
@@ -250,12 +251,13 @@ def _save_settings() -> None:
 
 def _reset_daily_stats_if_needed():
     today = datetime.now(timezone.utc).date()
-    if session_stats["last_reset_date"] != today:
-        session_stats["trades_today"]       = 0
-        session_stats["consecutive_losses"] = 0
-        session_stats["last_reset_date"]    = today
-        signal_memory.clear()
-        _save_session_stats()
+    with stats_lock:
+        if session_stats["last_reset_date"] != today:
+            session_stats["trades_today"]       = 0
+            session_stats["consecutive_losses"] = 0
+            session_stats["last_reset_date"]    = today
+            signal_memory.clear()
+            _save_session_stats()
 
 
 def _score_all_strategies(state: dict) -> list:
@@ -304,6 +306,12 @@ def _scan_symbol(sym: str) -> tuple[dict | None, list, dict | None]:
             symbol_controls[sym]["force_fire"] = False
 
     if not enabled:
+        return None, [], None
+
+    # ── Per-symbol news filter (BoE → GBP/USD only, ECB → EUR/USD only) ──
+    sym_blocked, sym_news_reason = is_symbol_blocked(sym)
+    if sym_blocked:
+        print(f"[NEWS] ⏸  {sym} skipped: {sym_news_reason}")
         return None, [], None
 
     cfg = config.get_symbol_cfg(sym)
@@ -395,10 +403,10 @@ def run_engine_cycle():
     
      
 
-    # ── News filter — block entire cycle if in a high-impact window ───────
-    safe, news_reason = is_safe_to_trade()
-    if not safe:
-        print(f"[NEWS] ⏸  Blocked: {news_reason}")
+    # ── News filter — global block (Fed, NFP, daily windows) stops all pairs ─
+    globally_blocked, news_reason = is_global_blocked()
+    if globally_blocked:
+        print(f"[NEWS] ⏸  All pairs blocked: {news_reason}")
         with state_lock:
             engine_state["status"]      = "news_block"
             engine_state["news_block"]  = news_reason
@@ -407,6 +415,7 @@ def run_engine_cycle():
     else:
         with state_lock:
             engine_state["news_block"] = ""
+    # BoE/ECB per-symbol filtering is applied inside _scan_symbol() below.
     # ─────────────────────────────────────────────────────────────────────
 
     with state_lock:
@@ -477,8 +486,9 @@ def run_engine_cycle():
         mode_label = "SIM" if use_sim else "LIVE"
         log_trade(approved_decision, executed=success, mode=mode_label)
         if success:
-            session_stats["trades_today"] += 1
-            _save_session_stats()
+            with stats_lock:
+                session_stats["trades_today"] += 1
+                _save_session_stats()
             signal_memory.record(approved_decision, best_state)
             _add_to_journal(approved_decision, lot, mode_label)
             trade_entry = {
@@ -559,11 +569,12 @@ def _auto_mark_result(tid: str, result: str) -> None:
                 e["pnl"]          = e["pnl_win"] if result == "W" else e["pnl_loss"]
                 e["auto_monitor"] = False
                 _save_journal(entries)
-                if result == "L":
-                    session_stats["consecutive_losses"] += 1
-                else:
-                    session_stats["consecutive_losses"] = 0
-                _save_session_stats()
+                with stats_lock:
+                    if result == "L":
+                        session_stats["consecutive_losses"] += 1
+                    else:
+                        session_stats["consecutive_losses"] = 0
+                    _save_session_stats()
                 break
 
 
@@ -907,11 +918,12 @@ def set_journal_result():
                 e["auto_monitor"] = False
                 matched = True
                 if prev_result != result:
-                    if result == "L":
-                        session_stats["consecutive_losses"] += 1
-                    elif result == "W":
-                        session_stats["consecutive_losses"] = 0
-                _save_session_stats()
+                    with stats_lock:
+                        if result == "L":
+                            session_stats["consecutive_losses"] += 1
+                        elif result == "W":
+                            session_stats["consecutive_losses"] = 0
+                        _save_session_stats()
                 break
         if not matched:
             return jsonify({"ok": False, "error": f"Trade {tid} not found"}), 404
@@ -946,6 +958,44 @@ def clear_journal():
     with journal_lock:
         _save_journal([])
     return jsonify({"ok": True, "message": "Journal cleared"})
+
+
+@app.route("/api/news/upcoming", methods=["GET"])
+def api_news_upcoming():
+    """
+    Return upcoming blocked trading days within the next N days.
+    Query param: ?days=30 (default 30, max 90)
+
+    Each entry contains:
+      date          — YYYY-MM-DD
+      weekday       — Monday … Sunday
+      event         — human-readable event name
+      scope         — 'all_pairs' | 'gbp_pairs' | 'eur_pairs'
+      pairs_blocked — comma-separated symbols affected, or 'ALL'
+    """
+    try:
+        days = int(request.args.get("days", 30))
+        days = max(1, min(days, 90))
+    except (ValueError, TypeError):
+        days = 30
+
+    upcoming = get_upcoming_blocked_days(days=days)
+
+    today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    today_events = [e for e in upcoming if e["date"] == today_str]
+    future_events = [e for e in upcoming if e["date"] > today_str]
+
+    return jsonify({
+        "window_days":    days,
+        "today":          today_str,
+        "today_blocked":  today_events,
+        "upcoming":       future_events,
+        "total_events":   len(upcoming),
+        "note": (
+            "Daily recurring windows (UK/EU 06:45–08:30, US 12:15–13:30, "
+            "Fed speakers 13:30–14:30 UTC) apply every weekday and are not listed here."
+        ),
+    })
 
 
 @app.route("/api/backtest", methods=["POST"])

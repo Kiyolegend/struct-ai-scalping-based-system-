@@ -19,7 +19,7 @@ Scoring breakdown (max ~115):
   Session timing       — 10        (London/NY=10)
   5M confirmation      — up to 20  (CHoCH body≥50%=20, BOS body≥60%=10)
 
-Minimum score: 75
+Minimum score: config.MIN_CONFIDENCE (default 80)
 Entry = market, SL = beyond OB edge + 5p buffer, TP = 2R
 """
 
