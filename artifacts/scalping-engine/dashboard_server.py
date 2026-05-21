@@ -150,7 +150,6 @@ def _add_to_journal(decision: dict, lot: float, mode: str) -> None:
     symbol    = decision.get("symbol", config.SYMBOL)
     cfg       = config.get_symbol_cfg(symbol)
     pip_size  = cfg["pip_size"]
-    pip_value = cfg.get("pip_value_per_lot", 10.0)  # USD per lot per pip
 
     entry_price = float(decision.get("entry", 0) or 0)
     sl_price    = float(decision.get("sl",    0) or 0)
@@ -159,6 +158,17 @@ def _add_to_journal(decision: dict, lot: float, mode: str) -> None:
     sl_pips = round(abs(entry_price - sl_price) / pip_size, 1) if pip_size else 0
     tp_pips = round(abs(tp_price - entry_price)  / pip_size, 1) if pip_size else 0
     rr      = round(tp_pips / sl_pips, 2) if sl_pips else 0
+
+    # BUG 4 FIX: compute pip_value dynamically from entry price
+    # For JPY pairs (pip_size = 0.01): pip value floats with the exchange rate.
+    #   pip_value = (pip_size / price) * 100_000  (USD per standard lot per pip)
+    # For non-JPY USD-quoted pairs (pip_size = 0.0001): pip value is fixed $10.
+    #   pip_value = pip_size * 100_000 = $10.00
+    # Using the hardcoded config constant would drift by 3-11% as rates move.
+    if entry_price > 0 and pip_size == 0.01:
+        pip_value = (pip_size / entry_price) * 100_000
+    else:
+        pip_value = pip_size * 100_000
 
     # P&L at each outcome (for lot size used)
     pnl_win  = round(tp_pips * lot * pip_value, 2)
@@ -183,14 +193,14 @@ def _add_to_journal(decision: dict, lot: float, mode: str) -> None:
         "lot":         lot,
         "pnl_win":     pnl_win,
         "pnl_loss":    pnl_loss,
-        "result":      None,   # null until marked W or L
+        "result":      None,
         "pnl":         None,
         "reason":      decision.get("reason", ""),
-        "auto_monitor": True,  # watched by outcome watcher until result is set
+        "auto_monitor": True,
     }
     with journal_lock:
         entries = _load_journal()
-        entries.insert(0, entry)   # newest first
+        entries.insert(0, entry)
         _save_journal(entries)
 
 
@@ -288,12 +298,11 @@ def _scan_symbol(sym: str) -> tuple[dict | None, list, dict | None]:
         ctrl       = symbol_controls.get(sym, {"enabled": True, "force_fire": False})
         enabled    = ctrl["enabled"]
         force_fire = ctrl["force_fire"]
-        # Consume the force-fire flag immediately (one-shot)
         if force_fire:
             symbol_controls[sym]["force_fire"] = False
 
     if not enabled:
-        return None, [], None   # symbol disabled — skip entirely
+        return None, [], None
 
     cfg = config.get_symbol_cfg(sym)
 
@@ -307,19 +316,13 @@ def _scan_symbol(sym: str) -> tuple[dict | None, list, dict | None]:
     asian_only = "asian" in _sessions and "london" not in _sessions and "ny" not in _sessions
 
     if force_fire:
-        # Force-fire: take the highest-scoring strategy regardless of threshold/session
         signals = sorted(
             [s for s in strategy_scores if s["fired"]],
             key=lambda s: s["score"], reverse=True
         )
         if not signals:
-            # Even if no strategy "fired", take the one with highest score
             signals = sorted(strategy_scores, key=lambda s: s["score"], reverse=True)
     else:
-        # ── BUG 8 FIX: S6 (Asian Range Boundary Reaction) is exempt from
-        # the asian_only block because it is designed exclusively for that
-        # window. All other strategies (S1-S5) are correctly blocked during
-        # Asian-only sessions.
         S6_NAME = "Asian Range Boundary Reaction"
         signals = [
             s for s in strategy_scores
@@ -328,10 +331,6 @@ def _scan_symbol(sym: str) -> tuple[dict | None, list, dict | None]:
         ]
         signals.sort(key=lambda s: s["score"], reverse=True)
 
-    # ── Directional conflict check ────────────────────────────────────────────
-    # If top two fired signals point in opposite directions, log the
-    # conflict and keep only signals that match the highest-confidence
-    # direction. Engine always takes the strongest signal.
     if len(signals) >= 2:
         top_dir    = signals[0].get("direction", "")
         second_dir = signals[1].get("direction", "")
@@ -353,23 +352,35 @@ def _scan_symbol(sym: str) -> tuple[dict | None, list, dict | None]:
             decision["symbol"]     = sym
             decision["force_fire"] = force_fire
 
-        # Force-fire fallback: build a minimal decision from the top score even if check() returned None
+        # BUG 2 FIX: force-fire fallback — derive direction from market bias.
+        # Previously hardcoded "BUY" regardless of market direction.
+        # Now reads 4H bias first, falls back to 1H, defaults to BUY only
+        # when both timeframes are neutral.
         if force_fire and decision is None:
             price = market_state.get("current_price")
             pip   = cfg["pip_size"]
             if price:
-                sl = price - 15 * pip
-                tp = price + 30 * pip
+                bias = market_state.get("bias", {})
+                b4h  = bias.get("4h", "neutral")
+                b1h  = bias.get("1h", "neutral")
+                if b4h == "bearish" or (b4h not in ("bullish", "bearish") and b1h == "bearish"):
+                    ff_direction = "SELL"
+                    sl = round(price + 15 * pip, 5)
+                    tp = round(price - 30 * pip, 5)
+                else:
+                    ff_direction = "BUY"
+                    sl = round(price - 15 * pip, 5)
+                    tp = round(price + 30 * pip, 5)
                 decision = {
                     "trade":      True,
-                    "type":       "BUY",
+                    "type":       ff_direction,
                     "symbol":     sym,
                     "confidence": best["score"],
                     "strategy":   best["name"],
                     "reason":     f"FORCE-FIRE — score {best['score']}",
                     "entry":      price,
-                    "sl":         round(sl, 5),
-                    "tp":         round(tp, 5),
+                    "sl":         sl,
+                    "tp":         tp,
                     "rr":         2.0,
                     "force_fire": True,
                 }
@@ -383,7 +394,6 @@ def run_engine_cycle():
     with state_lock:
         engine_state["status"] = "scanning"
 
-    # ── Scan all symbols, collect best signal ─────────────────────────────────
     scan_symbols = config.SCAN_SYMBOLS
     print(f"\n[ENGINE] Scanning {len(scan_symbols)} symbols: {', '.join(scan_symbols)}")
 
@@ -403,7 +413,6 @@ def run_engine_cycle():
         if market_state is None:
             continue
 
-        # Keep the first successful state for dashboard display (fallback = SYMBOL)
         if best_state is None or sym == config.SYMBOL:
             best_state = market_state
             best_sym   = sym
@@ -424,7 +433,6 @@ def run_engine_cycle():
             engine_state["last_update"] = datetime.now(timezone.utc).strftime("%H:%M:%S UTC")
         return
 
-    # ── Apply risk / duplicate filter to best signal ──────────────────────────
     approved_decision = None
     block_reason      = None
 
@@ -439,7 +447,6 @@ def run_engine_cycle():
                 block_reason = reason
 
     if approved_decision:
-        # Apply the winning symbol's pip size before executing
         cfg = config.get_symbol_cfg(approved_decision.get("symbol", config.SYMBOL))
         config.PIP_SIZE   = cfg["pip_size"]
         config.MT5_SYMBOL = cfg["mt5_name"]
@@ -496,7 +503,6 @@ def run_engine_cycle():
         if block_reason:
             engine_state["last_block"] = block_reason
 
-    # Update price tracker so outcome watcher can detect SIM trade results
     with prices_lock:
         for _sym, (_mstate, _, _) in parallel_results:
             if _mstate is not None:
@@ -531,7 +537,7 @@ def _auto_mark_result(tid: str, result: str) -> None:
             if e.get("id") == tid and e.get("result") is None:
                 e["result"]       = result
                 e["pnl"]          = e["pnl_win"] if result == "W" else e["pnl_loss"]
-                e["auto_monitor"] = False   # stop watching this entry
+                e["auto_monitor"] = False
                 _save_journal(entries)
                 if result == "L":
                     session_stats["consecutive_losses"] += 1
@@ -562,8 +568,7 @@ def _outcome_watcher() -> None:
                 mode      = entry.get("mode", "SIM")
                 tid       = entry["id"]
                 if sl == 0 or tp == 0:
-                    continue   # incomplete entry — skip
-                # ── SIM mode: compare live price against SL / TP ─────────────
+                    continue
                 if mode == "SIM":
                     with prices_lock:
                         price = symbol_prices.get(sym)
@@ -574,12 +579,11 @@ def _outcome_watcher() -> None:
                             _auto_mark_result(tid, "W")
                         elif price <= sl:
                             _auto_mark_result(tid, "L")
-                    else:   # SELL
+                    else:
                         if price <= tp:
                             _auto_mark_result(tid, "W")
                         elif price >= sl:
                             _auto_mark_result(tid, "L")
-                # ── LIVE mode: check MT5 closed deal history ─────────────────
                 elif mode == "LIVE":
                     try:
                         import MetaTrader5 as mt5
@@ -599,16 +603,15 @@ def _outcome_watcher() -> None:
                                                       group=f"*{mt5_symbol}*")
                         if deals:
                             for deal in deals:
-                                # entry == 1 means this is a position-closing deal
                                 if getattr(deal, "entry", -1) == 1:
                                     result = "W" if deal.profit >= 0 else "L"
                                     _auto_mark_result(tid, result)
                                     break
                         mt5.shutdown()
                     except Exception:
-                        pass   # MT5 unavailable — silently skip, try next cycle
+                        pass
         except Exception:
-            pass   # never crash the watcher thread
+            pass
 
 
 # ── Flask routes ──────────────────────────────────────────────────────────────
@@ -620,12 +623,14 @@ def index():
 
 @app.route('/api/heatmap')
 def heatmap():
+    # BUG 5 FIX: added S6 "Asian Range Boundary Reaction" to short-name map
     short = {
         "MTF Pullback Precision Scalping":   "S1 Pullback",
         "Liquidity Sweep Reversal Scalping":  "S2 Sweep",
         "ICT OB/FVG Zone Reaction":           "S3 OB/FVG",
         "Volatility Compression Breakout":    "S4 Compression",
         "Session Open Momentum Scalp":        "S5 Session",
+        "Asian Range Boundary Reaction":      "S6 Asian",
     }
     result = {}
     for sym in config.SCAN_SYMBOLS:
@@ -704,7 +709,6 @@ def update_settings():
         with state_lock:
             engine_state["default_lot"] = config.DEFAULT_LOT
 
-    # ── Risk / SL settings (numeric, validated to sane ranges) ───────────────
     def _clamp(val, lo, hi):
         return max(lo, min(hi, val))
 
@@ -756,7 +760,7 @@ def set_symbol(symbol_key: str):
     config.MT5_SYMBOL = cfg["mt5_name"]
     with state_lock:
         engine_state["symbol"] = symbol
-        engine_state["price"]  = None   # reset price — will update next cycle
+        engine_state["price"]  = None
     return jsonify({"ok": True, "symbol": symbol, "pip_size": cfg["pip_size"], "mt5_name": cfg["mt5_name"]})
 
 
@@ -767,7 +771,6 @@ def get_symbols():
         ctrl_snapshot = {k: dict(v) for k, v in symbol_controls.items()}
     with state_lock:
         scores_snapshot = engine_state.get("strategy_scores", [])
-    # Build last score per symbol
     last_scores: dict[str, int] = {}
     for s in scores_snapshot:
         sym = s.get("symbol", "")
@@ -805,7 +808,6 @@ def force_fire_symbol():
     sym  = data.get("symbol", "").upper().replace("-", "/")
     if sym not in config.SCAN_SYMBOLS:
         return jsonify({"ok": False, "error": f"Unknown symbol: {sym}"}), 400
-    # Make sure symbol is enabled first
     with controls_lock:
         symbol_controls[sym]["enabled"]    = True
         symbol_controls[sym]["force_fire"] = True
@@ -828,7 +830,6 @@ def get_journal():
     win_rate  = round(len(wins) / len(marked) * 100, 1) if marked else 0
     avg_rr    = round(sum(e.get("rr", 0) for e in entries) / len(entries), 2) if entries else 0
 
-    # Equity curve: cumulative P&L in chronological order
     chrono  = list(reversed(marked))
     equity  = []
     running = 0.0
@@ -836,7 +837,6 @@ def get_journal():
         running += e.get("pnl", 0) or 0
         equity.append({"date": e["timestamp"], "pnl": round(running, 2)})
 
-    # Per-day summary
     day_map: dict = {}
     for e in marked:
         d = e.get("date", "")
@@ -878,14 +878,19 @@ def set_journal_result():
         matched = False
         for e in entries:
             if e.get("id") == tid:
+                # BUG 3 FIX: capture existing result before overwriting.
+                # Counter only adjusts when the result actually changes,
+                # so re-marking the same outcome twice is a no-op.
+                prev_result       = e.get("result")
                 e["result"]       = result
                 e["pnl"]          = e["pnl_win"] if result == "W" else e["pnl_loss"]
-                e["auto_monitor"] = False   # stop the watcher from re-marking this entry
+                e["auto_monitor"] = False
                 matched = True
-                if result == "L":
-                    session_stats["consecutive_losses"] += 1
-                elif result == "W":
-                    session_stats["consecutive_losses"] = 0
+                if prev_result != result:
+                    if result == "L":
+                        session_stats["consecutive_losses"] += 1
+                    elif result == "W":
+                        session_stats["consecutive_losses"] = 0
                 _save_session_stats()
                 break
         if not matched:
@@ -906,7 +911,7 @@ def unmark_journal_result():
             if e.get("id") == tid:
                 e["result"]       = None
                 e["pnl"]          = None
-                e["auto_monitor"] = True   # re-enable watcher for this entry
+                e["auto_monitor"] = True
                 matched = True
                 break
         if not matched:
@@ -968,13 +973,9 @@ def main():
 
     t = threading.Thread(target=engine_loop, daemon=True)
     t.start()
-    threading.Thread(target=_outcome_watcher, daemon=True, name="outcome-watcher").start()
 
-    def open_browser():
-        time.sleep(1.5)
-        webbrowser.open(f"http://localhost:{PORT}")
-
-    threading.Thread(target=open_browser, daemon=True).start()
+    watcher = threading.Thread(target=_outcome_watcher, daemon=True)
+    watcher.start()
 
     app.run(host="0.0.0.0", port=PORT, debug=False, use_reloader=False)
 

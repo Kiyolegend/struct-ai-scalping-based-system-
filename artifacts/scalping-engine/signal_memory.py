@@ -1,7 +1,10 @@
 """
 Signal Memory — prevents the same setup firing more than once per session.
-Stores one key PER SYMBOL so parallel multi-symbol scanning doesn't
-overwrite keys across symbols.
+
+Stores one key PER SYMBOL PER STRATEGY so that:
+  - parallel multi-symbol scanning doesn't overwrite keys across symbols, and
+  - one strategy firing for a symbol doesn't erase the memory of a different
+    strategy that already fired for the same symbol.
 """
 
 import json
@@ -13,7 +16,8 @@ class SignalMemory:
     def __init__(self):
         self._path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "signal_memory.json")
         self._lock = threading.Lock()
-        self._keys = {}
+        # _keys[symbol][strategy] = {"key": tuple, "bias": str}
+        self._keys: dict[str, dict[str, dict]] = {}
         self._load()
 
     def _load(self):
@@ -21,15 +25,26 @@ class SignalMemory:
             with open(self._path, "r") as f:
                 data = json.load(f)
             if isinstance(data, dict) and "keys" in data:
-                self._keys = {
-                    sym: {"key": tuple(v["key"]), "bias": v["bias"]}
-                    for sym, v in data["keys"].items() if v.get("key")
-                }
-            elif isinstance(data, dict) and "key" in data:
-                key = data.get("key")
-                if key:
-                    sym = key[0]
-                    self._keys = {sym: {"key": tuple(key), "bias": data.get("bias")}}
+                raw = data["keys"]
+                self._keys = {}
+                for sym, val in raw.items():
+                    # New format: {sym: {strategy_name: {key, bias}}}
+                    if isinstance(val, dict) and all(
+                        isinstance(v, dict) and "key" in v
+                        for v in val.values()
+                    ):
+                        self._keys[sym] = {
+                            strat: {"key": tuple(v["key"]), "bias": v["bias"]}
+                            for strat, v in val.items()
+                            if v.get("key")
+                        }
+                    # Old format (single entry per symbol): {sym: {key, bias}}
+                    elif isinstance(val, dict) and "key" in val and val.get("key"):
+                        k = tuple(val["key"])
+                        strat = k[1] if len(k) > 1 else ""
+                        self._keys[sym] = {
+                            strat: {"key": k, "bias": val.get("bias")}
+                        }
         except Exception:
             self._keys = {}
 
@@ -37,8 +52,11 @@ class SignalMemory:
         try:
             with open(self._path, "w") as f:
                 json.dump({"keys": {
-                    sym: {"key": list(v["key"]), "bias": v["bias"]}
-                    for sym, v in self._keys.items()
+                    sym: {
+                        strat: {"key": list(v["key"]), "bias": v["bias"]}
+                        for strat, v in strategies.items()
+                    }
+                    for sym, strategies in self._keys.items()
                 }}, f)
         except Exception:
             pass
@@ -53,8 +71,12 @@ class SignalMemory:
 
     def is_duplicate(self, decision: dict, state: dict) -> bool:
         with self._lock:
-            symbol = decision.get("symbol", "")
-            entry  = self._keys.get(symbol)
+            symbol      = decision.get("symbol", "")
+            strategy    = decision.get("strategy", "")
+            sym_entries = self._keys.get(symbol)
+            if sym_entries is None:
+                return False
+            entry = sym_entries.get(strategy)
             if entry is None:
                 return False
             new_key  = self._make_key(decision)
@@ -62,15 +84,20 @@ class SignalMemory:
             if new_key != entry["key"]:
                 return False
             if new_bias != entry["bias"]:
-                del self._keys[symbol]
+                sym_entries.pop(strategy, None)
+                if not sym_entries:
+                    del self._keys[symbol]
                 self._save()
                 return False
             return True
 
     def record(self, decision: dict, state: dict):
         with self._lock:
-            sym = decision.get("symbol", "")
-            self._keys[sym] = {
+            sym      = decision.get("symbol", "")
+            strategy = decision.get("strategy", "")
+            if sym not in self._keys:
+                self._keys[sym] = {}
+            self._keys[sym][strategy] = {
                 "key":  self._make_key(decision),
                 "bias": state.get("bias", {}).get("1h", "neutral"),
             }

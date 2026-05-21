@@ -28,7 +28,7 @@ Hard gates (any failure = skip, evaluated in order):
   2. Clear HTF bias (1H minimum, 4H preferred)
   3. Compression confirmed (recent range ≤ 65% of baseline)
   4. Displacement candle (body≥70%, range≥1.5×avg, within 1h, breaks zone)
-  5. Zone/OB/S/R anchor within 15 pips of breakout edge  ← NEW
+  5. Zone/OB/S/R anchor within 15 pips of breakout edge
   6. Price within 30 pips of breakout edge (not chasing)
   7. Micro BOS/CHoCH confirmation (FVG retest bonus if also in FVG)
 
@@ -250,7 +250,7 @@ def _proximity_score(price: float, comp_high: float, comp_low: float,
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Zone / OB / S/R anchor at breakout edge — NEW structural gate
+# Zone / OB / S/R anchor at breakout edge — structural gate
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _has_zone_anchor(breakout_edge: float, state: dict, s5m: dict,
@@ -270,7 +270,7 @@ def _has_zone_anchor(breakout_edge: float, state: dict, s5m: dict,
     Checks (in order):
       1. S/R levels from STRUCT.ai (state["sr_levels"])
       2. Supply/demand zones on 5M and 15M
-      3. Order blocks on 5M and 15M
+      3. Order blocks on 5M and 15M (inert until STRUCT.ai API provides OB data)
     """
     threshold = threshold_pips * pip
     s15m      = state.get("15m", {})
@@ -299,7 +299,21 @@ def _has_zone_anchor(breakout_edge: float, state: dict, s5m: dict,
             if abs(breakout_edge - center) <= threshold:
                 return True, f"zone[{bottom:.5f}-{top:.5f}]"
 
-    
+    # ── 3. Order blocks (5M + 15M) ────────────────────────────────────────
+    for tf_data in (s5m, s15m):
+        obs = tf_data.get("ob") or tf_data.get("order_blocks") or []
+        if not isinstance(obs, list):
+            continue
+        for ob in obs:
+            if not isinstance(ob, dict):
+                continue
+            top    = ob.get("top")    or 0
+            bottom = ob.get("bottom") or 0
+            if top == 0 and bottom == 0:
+                continue
+            center = (top + bottom) / 2
+            if abs(breakout_edge - center) <= threshold:
+                return True, f"OB[{bottom:.5f}-{top:.5f}]"
 
     return False, ""
 

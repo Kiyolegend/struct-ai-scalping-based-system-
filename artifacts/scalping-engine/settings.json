@@ -7,5 +7,5 @@
   "min_sweep_recovery_pips": 5,
   "net_min_rr": 1.5,
   "min_confidence": 80,
-  "max_trades_per_day": 5
+  "max_trades_per_day": 3
 }

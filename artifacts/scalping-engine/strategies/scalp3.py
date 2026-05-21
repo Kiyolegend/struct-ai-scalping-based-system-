@@ -391,8 +391,8 @@ def check(state: dict, debug: bool = False) -> dict | None:
         print(f"    [S3] {direction} | align={align_score} ob={ob_score} ob4h={ob4h_score} "
               f"fvg={fvg_score} zone={zone_score} sess={session_score} conf={confirm_score} → {total_score}")
 
-    if total_score < 75:
-        if debug: print(f"    [S3] skip: score {total_score} < 75 minimum")
+    if total_score < config.MIN_CONFIDENCE:
+        if debug: print(f"    [S3] skip: score {total_score}  < {config.MIN_CONFIDENCE} minimum")
         return None
 
     # ── SL / TP — SL beyond OB edge ──────────────────────────────────────

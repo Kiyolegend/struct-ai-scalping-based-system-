@@ -39,13 +39,13 @@ if errorlevel 1 (
 )
 echo  [OK] Dependencies ready.
 echo.
-echo  [..] Starting dashboard on http://localhost:5000
-echo  Open your browser and go to: http://localhost:5000
+echo  [..] Starting dashboard on http://localhost:5002
+echo  Open your browser and go to: http://localhost:5002
 echo  Press CTRL+C to stop the engine.
 echo.
 
 :: Open browser after 2 seconds
-start "" /b cmd /c "timeout /t 2 >nul && start http://localhost:5000"
+start "" /b cmd /c "timeout /t 2 >nul && start http://localhost:5002"
 
 :: Start engine -- window stays open even if it crashes
 python dashboard_server.py
