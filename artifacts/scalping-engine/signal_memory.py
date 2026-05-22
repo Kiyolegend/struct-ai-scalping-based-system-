@@ -67,6 +67,7 @@ class SignalMemory:
             decision.get("strategy", ""),
             decision.get("type", ""),
             round(decision.get("sl", 0), 5),
+            round(decision.get("entry", 0), 4),
         )
 
     def is_duplicate(self, decision: dict, state: dict) -> bool:

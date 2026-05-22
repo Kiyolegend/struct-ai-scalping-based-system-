@@ -501,6 +501,14 @@ def run_engine_cycle():
         success    = sim_order(approved_decision, lot) if use_sim else live_order(approved_decision, lot)
         mode_label = "SIM" if use_sim else "LIVE"
         log_trade(approved_decision, executed=success, mode=mode_label)
+        
+        if success and approved_decision.get("strategy") == "Asian Range Boundary Reaction":
+                from strategies.scalp6 import _mark_fired as _s6_mark_fired
+                _s6_mark_fired(
+                approved_decision.get("symbol", ""),approved_decision.get("boundary_side", "")
+            )
+
+
         if success:
             with stats_lock:
                 session_stats["trades_today"] += 1

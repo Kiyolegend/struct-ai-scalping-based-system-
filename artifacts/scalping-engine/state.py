@@ -147,6 +147,12 @@ def build_state(symbol: str = None) -> dict | None:
         print(f"FAILED — Repo 1 API response missing fields: {_missing}")
         print(f"  /analysis endpoint may have renamed fields. Check Repo 1.")
         return None
+    
+    _REQUIRED_TF = {"bos", "choch", "zones", "candles"}
+    for _tf_label, _tf_data in [("15m", a15m), ("1h", a1h)]:
+        _tf_missing = _REQUIRED_TF - set(_tf_data.keys())
+        if _tf_missing:
+            print(f"  [WARN] {_tf_label} response missing fields: {_tf_missing} — strategies may degrade silently")
 
     current_price = candles_5m[-1].get("close")
     if not isinstance(current_price, (int, float)) or current_price <= 0:

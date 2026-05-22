@@ -85,7 +85,7 @@ def detect_order_blocks(candles: list, current_price: float, symbol: str = "") -
 
                 if dist <= proximity:
                     mitigated = any(
-                        fc["close"] < c["low"] - 2 * pip
+                        float(fc["close"]) < float(c["low"]) - 2 * pip
                         for fc in candles[i + 1:]
                     )
                     if not mitigated:
@@ -116,7 +116,7 @@ def detect_order_blocks(candles: list, current_price: float, symbol: str = "") -
 
                 if dist <= proximity:
                     mitigated = any(
-                        fc["close"] > c["high"] + 2 * pip
+                        float(fc["close"]) > float(c["high"]) + 2 * pip
                         for fc in candles[i + 1:]
                     )
                     if not mitigated:

@@ -199,10 +199,12 @@ def _boundary_confluence(boundary: float, state: dict,
 
     zones_5m  = s5m.get("zones")  or []
     zones_15m = s15m.get("zones") or []
+    zones_1h  = state.get("1h", {}).get("zones") or []
     if not isinstance(zones_5m,  list): zones_5m  = []
     if not isinstance(zones_15m, list): zones_15m = []
+    if not isinstance(zones_1h,  list): zones_1h  = []
 
-    for zone in zones_5m + zones_15m:
+    for zone in zones_5m + zones_15m + zones_1h:
         if not isinstance(zone, dict):
             continue
         top    = zone.get("top")    or 0
@@ -236,14 +238,16 @@ def _find_asian_choch(s5m: dict, direction: str,
             continue
         if c.get("direction") != direction:
             continue
-        if (now_sec - c.get("time", 0)) > max_age_secs:
+        if (now_sec - c.get("time", now_sec)) > max_age_secs:
             continue
 
         c_time = c.get("time")
         candle = next((k for k in candles_5m if k.get("time") == c_time), None)
 
         if candle is None:
-            return c  # can't verify body — accept the CHoCH (same as S3 behaviour)
+            return None  # cannot verify body strength — reject to avoid weak confirmation
+
+
 
         rng  = candle.get("high", 0) - candle.get("low", 0)
         body = abs(candle.get("close", 0) - candle.get("open", 0))
@@ -466,10 +470,7 @@ def check(state: dict, debug: bool = False) -> dict | None:
         if debug: print(f"    [S6] REJECTED: net RR {net_rr} < {config.NET_MIN_RR} minimum")
         return None
 
-    # ── Record the fire ONLY when the signal is actually returned ─────────
-    # This is the only place _mark_fired is called so a rejected signal
-    # (bad RR, tight SL, etc.) does not consume the daily cooldown slot.
-    _mark_fired(symbol, boundary_side)
+    
 
     reason = (
         f"Asian {boundary_side}={boundary:.5f} | "
@@ -486,6 +487,7 @@ def check(state: dict, debug: bool = False) -> dict | None:
     return {
         "trade":       True,
         "type":        trade_type,
+        "boundary_side": boundary_side,
         "confidence":  total_score,
         "strategy":    "Asian Range Boundary Reaction",
         "reason":      reason,

@@ -192,8 +192,8 @@ def check(state: dict, debug: bool = False) -> dict | None:
     dist_from_sweep = abs(price - sweep_level)
     dist_pips_sw    = dist_from_sweep / pip
 
-    if dist_pips_sw > 50:
-        if debug: print(f"    [S2] skip: {dist_pips_sw:.1f}p from sweep (>50p)")
+    if dist_pips_sw > 25:
+        if debug: print(f"    [S2] skip: {dist_pips_sw:.1f}p from sweep (>25p)")
         return None
 
     if dist_pips_sw <= 5:

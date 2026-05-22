@@ -84,7 +84,6 @@ ACCOUNT_BALANCE = 135.0
 # Drop to 0.01 if you want to be more conservative while testing.
 DEFAULT_LOT = 0.02
 MAX_LOT = 0.05
-RISK_PERCENT = 0.01
 MAX_RISK_PERCENT = 0.03
 CONTRACT_SIZE = 100000
 MIN_RR = 2.0
