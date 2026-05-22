@@ -36,7 +36,7 @@ from signal_memory import SignalMemory
 from news_filter import is_safe_to_trade, is_global_blocked, is_symbol_blocked, get_upcoming_blocked_days
 
 try:
-    from execution.mt5_executor import place_order as live_order
+    from execution.mt5_executor import place_order as live_order, has_open_position
     MT5_AVAILABLE = True
 except ImportError:
     MT5_AVAILABLE = False
@@ -79,6 +79,7 @@ engine_state = {
     "news_block":    "",
     "target_rr":     config.TARGET_RR,
     "default_lot":   config.DEFAULT_LOT,
+    "occupied_symbols": [],
 }
 state_lock = threading.Lock()
 STATS_FILE    = os.path.join(os.path.dirname(__file__), "session_stats.json")
@@ -437,6 +438,13 @@ def run_engine_cycle():
 
     with ThreadPoolExecutor(max_workers=len(scan_symbols)) as executor:
         parallel_results = list(executor.map(_scan_with_sym, scan_symbols))
+         # ── Update occupied symbols for dashboard display ──────────────────────
+
+    if MT5_AVAILABLE and not config.SIMULATION_MODE and not SIM_FORCE:
+        occupied = [sym for sym in scan_symbols if has_open_position(sym)]
+        with state_lock:
+            engine_state["occupied_symbols"] = occupied
+          
 
     for sym, (market_state, scores, decision) in parallel_results:
         if market_state is None:
@@ -466,9 +474,15 @@ def run_engine_cycle():
     block_reason      = None
 
     if best_decision:
-        if signal_memory.is_duplicate(best_decision, best_state):
+        if not config.SIMULATION_MODE and not SIM_FORCE and MT5_AVAILABLE:
+            _sym_to_check = best_decision.get("symbol", config.SYMBOL)
+            if live_order.__module__ and has_open_position(_sym_to_check):
+                print(f"  [GUARD] {_sym_to_check} already has an open position — skipping signal")
+                best_decision = None
+                block_reason  = f"Open position on {_sym_to_check} — no hedge"
+        if best_decision and signal_memory.is_duplicate(best_decision, best_state):
             block_reason = "Duplicate setup — same signal already traded this structure"
-        else:
+        elif best_decision:
             approved, reason = validate(best_decision, session_stats)
             if approved:
                 approved_decision = best_decision

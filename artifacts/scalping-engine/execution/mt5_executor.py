@@ -141,3 +141,34 @@ def place_order(decision: dict, lot: float) -> bool:
 
     finally:
         mt5.shutdown()
+
+
+def has_open_position(symbol: str) -> bool:
+    """Check whether MT5 currently has any open position on this symbol.
+
+    Called by run_engine_cycle before executing a new signal. If any open
+    position exists on the symbol (BUY or SELL, any lot size), returns True
+    and the engine skips the signal entirely — preventing hedges.
+
+    Returns False on any connection error so the engine fails safe (i.e. if
+    MT5 cannot be reached the position check is treated as "no position open"
+    and normal execution continues — rather than silently blocking all trades).
+    """
+    try:
+        import MetaTrader5 as mt5
+    except ImportError:
+        return False
+
+    mt5_inst = _connect()
+    if mt5_inst is None:
+        return False
+
+    try:
+        sym_cfg    = config.get_symbol_cfg(symbol)
+        mt5_symbol = sym_cfg["mt5_name"]          # e.g. "GBPUSDm", "EURUSDm"
+        positions  = mt5.positions_get(symbol=mt5_symbol)
+        if positions is None:
+            return False
+        return len(positions) > 0
+    finally:
+        mt5.shutdown()
