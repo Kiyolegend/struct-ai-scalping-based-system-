@@ -29,7 +29,7 @@ Scoring (max 110, minimum 85):
   Asian sweep bonus       — 10   (optional — price swept Asian range then BOS confirmed)
   Zone confluence bonus   — 10   (optional — price inside supply/demand zone)
 
-Minimum viable setup (score exactly 80):
+Minimum viable setup (score exactly 85):
   Session window + 1H bias + BOS + near key level → 80
   Fires reliably 1-2× per London, 1× per NY, every trading day.
 

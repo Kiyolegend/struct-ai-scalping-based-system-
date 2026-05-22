@@ -169,7 +169,9 @@ def _add_to_journal(decision: dict, lot: float, mode: str) -> None:
     # For non-JPY USD-quoted pairs (pip_size = 0.0001): pip value is fixed $10.
     #   pip_value = pip_size * 100_000 = $10.00
     # Using the hardcoded config constant would drift by 3-11% as rates move.
-    if entry_price > 0 and pip_size == 0.01:
+    _USD_QUOTE_PAIRS = {"EUR/USD", "GBP/USD", "AUD/USD"}
+    _symbol = decision.get("symbol", "")
+    if entry_price > 0 and _symbol not in _USD_QUOTE_PAIRS:
         pip_value = (pip_size / entry_price) * 100_000
     else:
         pip_value = pip_size * 100_000
@@ -583,13 +585,15 @@ def _auto_mark_result(tid: str, result: str) -> None:
                 e["pnl"]          = e["pnl_win"] if result == "W" else e["pnl_loss"]
                 e["auto_monitor"] = False
                 _save_journal(entries)
-                with stats_lock:
-                    if result == "L":
-                        session_stats["consecutive_losses"] += 1
-                    else:
-                        session_stats["consecutive_losses"] = 0
-                    _save_session_stats()
-                break
+                trade_date = e.get("date", "")
+                today_str  = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+                if trade_date == today_str:
+                    with stats_lock:
+                        if result == "L":
+                            session_stats["consecutive_losses"] += 1
+                        else:        
+                            session_stats["consecutive_losses"] = 0
+                        _save_session_stats()
 
 
 def _outcome_watcher() -> None:
@@ -932,12 +936,16 @@ def set_journal_result():
                 e["auto_monitor"] = False
                 matched = True
                 if prev_result != result:
-                    with stats_lock:
-                        if result == "L":
-                            session_stats["consecutive_losses"] += 1
-                        elif result == "W":
-                            session_stats["consecutive_losses"] = 0
-                        _save_session_stats()
+                    trade_date = e.get("date", "")
+                    today_str  = datetime.now(timezone.utc).strftime("%Y-%m-%d") 
+                    if trade_date == today_str:
+                        with stats_lock:
+                            if result == "L":
+                                session_stats["consecutive_losses"] += 1
+                            elif result == "W":
+                                session_stats["consecutive_losses"] = 0
+                            _save_session_stats()                     
+                        
                 break
         if not matched:
             return jsonify({"ok": False, "error": f"Trade {tid} not found"}), 404

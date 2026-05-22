@@ -95,7 +95,7 @@ def check(state: dict, debug: bool = False) -> dict | None:
         if choch_item and bos_item:
             if abs(bos_item.get("time", 0) - choch_item.get("time", 0)) <= 2 * 3600:
                 return choch_item
-            return choch_item if choch_item.get("time", 0) > bos_item.get("time", 0) else bos_item
+            return choch_item # CHoCH always preferred over BOS when both are valid
         return choch_item or bos_item
 
     buy_sweep_item  = _pick(bearish_choch, bearish_bos)
@@ -142,7 +142,7 @@ def check(state: dict, debug: bool = False) -> dict | None:
     if sell_sweep_price is not None:
         rec = _min_recovery(sell_sweep_score)
         if (sell_sweep_price - price) >= rec:
-            if direction is None or sell_sweep_score > sweep_score:
+            if direction is None or sell_sweep_score >= sweep_score:
                 direction      = "bearish"
                 trade_type     = "SELL"
                 sweep_score    = sell_sweep_score
@@ -332,7 +332,7 @@ def check(state: dict, debug: bool = False) -> dict | None:
     candles_5m_raw = s5m.get("candles", [])
     body_threshold = 0.50 if is_choch_confirm else 0.70
     reversal_ok    = False
-    for c in reversed(candles_5m_raw[-6:]):
+    for c in reversed(candles_5m_raw[-12:]):
         o_  = c.get("open",  0); h_ = c.get("high",  0)
         l_  = c.get("low",   0); cl_= c.get("close", 0)
         if (cl_ > o_) if direction == "bullish" else (cl_ < o_):

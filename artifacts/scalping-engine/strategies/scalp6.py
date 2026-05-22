@@ -50,6 +50,9 @@ import os as _os
 
 _COOLDOWN_FILE = _os.path.join(_os.path.dirname(__file__), "..", "s6_cooldown.json")
 _fired_today: dict = {}
+_cooldown_lock = __import__('threading').Lock()
+
+
 
 
 def _load_cooldown() -> None:
@@ -76,15 +79,17 @@ _load_cooldown()  # load once at import time — not on every cycle
 def _already_fired(symbol: str, boundary_side: str) -> bool:
     key   = f"{symbol}|{boundary_side}"
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    return _fired_today.get(key) == today
+    with _cooldown_lock:
+        return _fired_today.get(key) == today
 
 
 def _mark_fired(symbol: str, boundary_side: str) -> None:
-    _load_cooldown()
     key   = f"{symbol}|{boundary_side}"
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    _fired_today[key] = today
-    _save_cooldown()
+    with _cooldown_lock:
+        _load_cooldown()
+        _fired_today[key] = today
+        _save_cooldown()
 
 
 # ─────────────────────────────────────────────────────────────────────────────

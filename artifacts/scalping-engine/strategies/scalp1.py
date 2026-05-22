@@ -136,8 +136,8 @@ def check(state: dict, debug: bool = False) -> dict | None:
     dist_from_pullback = abs(price - pullback_price_15m)
     dist_pips          = dist_from_pullback / pip
 
-    if dist_pips > 50:
-        if debug: print(f"    [S1] skip: price {dist_pips:.1f}p from pullback (>50p)")
+    if dist_pips > 10:
+        if debug: print(f"    [S1] skip: price {dist_pips:.1f}p from pullback (>10p)")
         return None
 
     if dist_pips <= 5:
@@ -312,9 +312,7 @@ def check(state: dict, debug: bool = False) -> dict | None:
     net_sl_dist     = sl_dist + cost_amount
     net_rr          = round(net_tp_dist / net_sl_dist, 2) if net_sl_dist > 0 else 0
     # ── Post filters ──────────────────────────────────────────────────────
-    if dist_pips > 10:
-        print(f"    [S1] REJECTED: {dist_pips:.1f}p from pullback (>10p hard limit)")
-        return None
+    
 
     if sl_dist < config.MIN_SL_PIPS * pip:
         print(f"    [S1] REJECTED: SL too tight ({sl_dist/pip:.1f}p < {config.MIN_SL_PIPS})")
