@@ -62,12 +62,20 @@ class SignalMemory:
             pass
 
     def _make_key(self, decision: dict) -> tuple:
+        entry = decision.get("entry", 0)
+        # Bucket entry into 10-pip zones so that normal 1–5 pip price drift between
+        # scan cycles does not create a new key (and bypass dedup) each cycle.
+        # A genuine re-entry 10+ pips away from the last recorded entry gets a
+        # different bucket and is correctly treated as a new setup.
+        # JPY pairs trade at ~100–200: 10 pips = 0.1 → round to 1dp
+        # All other pairs trade at <10:  10 pips = 0.001 → round to 3dp
+        entry_bucket = round(entry, 1) if entry > 50 else round(entry, 3)
         return (
             decision.get("symbol", ""),
             decision.get("strategy", ""),
             decision.get("type", ""),
             round(decision.get("sl", 0), 5),
-            round(decision.get("entry", 0), 4),
+            entry_bucket,
         )
 
     def is_duplicate(self, decision: dict, state: dict) -> bool:
