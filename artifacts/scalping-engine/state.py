@@ -28,9 +28,17 @@ def _analysis(interval: str, outputsize: int = 200, symbol: str = None) -> dict 
     return _get("analysis", {"symbol": symbol or config.SYMBOL, "interval": interval, "outputsize": outputsize})
 
 
-def get_active_sessions() -> list[str]:
-    """Returns list of currently active sessions based on UTC time."""
-    hour = datetime.now(timezone.utc).hour
+def get_active_sessions(reference_ts: int = None) -> list[str]:
+    """Returns list of currently active sessions.
+    Uses reference_ts (unix timestamp from broker candle) if provided,
+    so session detection is immune to local PC clock drift.
+    Falls back to local UTC clock if no candle timestamp is available.
+    """
+    if reference_ts is not None:
+        now_utc = datetime.fromtimestamp(reference_ts, tz=timezone.utc)
+    else:
+        now_utc = datetime.now(timezone.utc)
+    hour = now_utc.hour
     lo = int(datetime.now(ZoneInfo("Europe/London")).utcoffset().total_seconds() // 3600)
     ny = int(datetime.now(ZoneInfo("America/New_York")).utcoffset().total_seconds() // 3600)
     sessions = []
@@ -147,7 +155,7 @@ def build_state(symbol: str = None) -> dict | None:
         print(f"FAILED — Repo 1 API response missing fields: {_missing}")
         print(f"  /analysis endpoint may have renamed fields. Check Repo 1.")
         return None
-    
+
     _REQUIRED_TF = {"bos", "choch", "zones", "candles"}
     for _tf_label, _tf_data in [("15m", a15m), ("1h", a1h)]:
         _tf_missing = _REQUIRED_TF - set(_tf_data.keys())
@@ -159,7 +167,8 @@ def build_state(symbol: str = None) -> dict | None:
         print("FAILED — invalid or missing price from API")
         return None
 
-    sessions          = get_active_sessions()
+    latest_ts           = candles_5m[-1].get("time")
+    sessions            = get_active_sessions(reference_ts=latest_ts)
     asia_high, asia_low = _get_asia_range(candles_5m)
 
     bias_15m = bias.get("bias_15m", {}).get("trend") or "neutral"

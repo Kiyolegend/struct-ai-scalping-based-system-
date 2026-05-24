@@ -27,13 +27,13 @@ except ImportError:
     pass
 
 import config
-from state import build_state
+from state import build_state, get_active_sessions
 from strategies import STRATEGIES
 from risk.manager import validate, get_lot_size
 from execution.simulator import place_order as sim_order
 from logger import log_trade
 from signal_memory import SignalMemory
-from news_filter import is_safe_to_trade, is_global_blocked, is_symbol_blocked, get_upcoming_blocked_days
+from news_filter_live import is_safe_to_trade, is_global_blocked, is_symbol_blocked, get_upcoming_blocked_days, get_pair_confidence_penalty
 
 try:
     from execution.mt5_executor import place_order as live_order, has_open_position
@@ -316,6 +316,7 @@ def _scan_symbol(sym: str) -> tuple[dict | None, list, dict | None]:
     if sym_blocked:
         print(f"[NEWS] ⏸  {sym} skipped: {sym_news_reason}")
         return None, [], None
+    news_penalty = get_pair_confidence_penalty(sym)
 
     cfg = config.get_symbol_cfg(sym)
 
@@ -337,9 +338,11 @@ def _scan_symbol(sym: str) -> tuple[dict | None, list, dict | None]:
             signals = sorted(strategy_scores, key=lambda s: s["score"], reverse=True)
     else:
         S6_NAME = "Asian Range Boundary Reaction"
+        
+        print(f"  [NEWS-PENALTY] {sym}  penalty={news_penalty}  threshold={config.MIN_CONFIDENCE + news_penalty}")
         signals = [
             s for s in strategy_scores
-            if s["fired"] and s["score"] >= config.MIN_CONFIDENCE
+            if s["fired"] and s["score"] >= config.MIN_CONFIDENCE + news_penalty
             and (not asian_only or s.get("name") == S6_NAME)
         ]
         signals.sort(key=lambda s: s["score"], reverse=True)
@@ -403,6 +406,8 @@ def _scan_symbol(sym: str) -> tuple[dict | None, list, dict | None]:
 
 def run_engine_cycle():
     _reset_daily_stats_if_needed()
+    with state_lock:
+        engine_state["sessions"] = get_active_sessions()
     
      
 

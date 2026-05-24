@@ -1,11 +1,11 @@
 {
   "target_rr": 2.0,
-  "default_lot": 0.01,
+  "default_lot": 0.02,
   "min_sl_pips": 7,
   "sl_buffer_pips": 5,
   "sweep_sl_buffer_pips": 8,
   "min_sweep_recovery_pips": 5,
   "net_min_rr": 1.6,
   "min_confidence": 80,
-  "max_trades_per_day": 3
+  "max_trades_per_day": 4
 }
