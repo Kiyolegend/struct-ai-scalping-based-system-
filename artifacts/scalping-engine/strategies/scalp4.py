@@ -373,7 +373,7 @@ def check(state: dict, debug: bool = False) -> dict | None:
     displacement = _detect_displacement(
         candles_5m, comp_high, comp_low, pip,
         avg_range=comp["baseline_avg"],
-        max_age_secs=3600
+        max_age_secs=3600,
         now_sec=now_sec,
     )
 

@@ -52,11 +52,13 @@ def is_tradeable_session(sessions: list[str]) -> bool:
     return any(s in sessions for s in ["london", "ny"])
 
 
-def _get_asia_range(candles: list) -> tuple[float | None, float | None]:
+def _get_asia_range(candles: list, reference_ts: int | None = None) -> tuple[float | None, float | None]:  # ← CHANGED
     """Extract today's Asian session high/low from 5m candles (UTC 00:00-09:00)."""
     if not candles:
         return None, None
-    today = datetime.now(timezone.utc).date()
+    _ref  = (datetime.fromtimestamp(reference_ts, tz=timezone.utc)                  # ← CHANGED
+             if reference_ts else datetime.now(timezone.utc))                        # ← CHANGED
+    today = _ref.date()                                                              # ← CHANGED
     asia = [
         c for c in candles
         if 0 <= datetime.fromtimestamp(c["time"], tz=timezone.utc).hour < 9
@@ -169,7 +171,7 @@ def build_state(symbol: str = None) -> dict | None:
 
     latest_ts           = candles_5m[-1].get("time")
     sessions            = get_active_sessions(reference_ts=latest_ts)
-    asia_high, asia_low = _get_asia_range(candles_5m)
+    asia_high, asia_low = _get_asia_range(candles_5m, reference_ts=latest_ts)  # ← CHANGED
 
     bias_15m = bias.get("bias_15m", {}).get("trend") or "neutral"
     bias_1h  = bias.get("bias_1h",  {}).get("trend") or "neutral"
