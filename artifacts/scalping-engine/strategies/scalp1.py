@@ -81,7 +81,7 @@ def check(state: dict, debug: bool = False) -> dict | None:
         return None
 
     # ── Step 2: 15M CHoCH invalidation — 4h look-back with time check ───
-    now_sec      = int(_time.time())
+    now_sec = int(state.get("reference_ts") or _time.time())
     choch_15m    = s15m.get("choch", [])
     recent_choch = [c for c in choch_15m
                     if isinstance(c, dict) and (now_sec - c.get("time", 0)) <= 4 * 3600][-3:]

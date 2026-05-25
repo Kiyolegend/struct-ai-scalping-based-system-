@@ -145,8 +145,9 @@ def _detect_liquidity_pools(candles: list, direction: str,
 
 def _detect_displacement(candles: list, comp_high: float, comp_low: float,
                           pip: float, avg_range: float,
-                          max_age_secs: int = 3600) -> dict | None:
-    now          = int(_time.time())
+                          max_age_secs: int = 3600, now_sec: int = 0) -> dict | None:
+    now          = now_sec or int(_time.time())
+
     min_range    = avg_range * 1.5
 
     for c in reversed(candles[-8:]):
@@ -209,8 +210,8 @@ def _detect_fvg(candles: list, direction: str, price: float) -> bool:
 
 
 def _detect_micro_confirmation(s5m: dict, direction: str,
-                                max_age_secs: int = 1800) -> bool:
-    now      = int(_time.time())
+                                max_age_secs: int = 1800, now_sec: int = 0) -> bool:
+    now      = now_sec or int(_time.time())
     bos_5m   = s5m.get("bos",   [])
     choch_5m = s5m.get("choch", [])
 
@@ -319,6 +320,7 @@ def check(state: dict, debug: bool = False) -> dict | None:
         return None
 
     sym_cfg = config.get_symbol_cfg(state.get("symbol"))
+    now_sec = int(state.get("reference_ts") or _time.time())
     pip     = sym_cfg["pip_size"]
 
     # ── Step 1: Session gate — London or NY only ──────────────────────────
@@ -372,6 +374,7 @@ def check(state: dict, debug: bool = False) -> dict | None:
         candles_5m, comp_high, comp_low, pip,
         avg_range=comp["baseline_avg"],
         max_age_secs=3600
+        now_sec=now_sec,
     )
 
     if displacement is None:
@@ -429,7 +432,7 @@ def check(state: dict, debug: bool = False) -> dict | None:
 
     # ── Step 7: FVG retest + micro BOS/CHoCH confirmation (FIX 6) ─────────
     fvg_ok   = _detect_fvg(candles_5m, htf_direction, price)
-    micro_ok = _detect_micro_confirmation(s5m, htf_direction, max_age_secs=1800)
+    micro_ok = _detect_micro_confirmation(s5m, htf_direction, max_age_secs=1800, now_sec=now_sec)
 
     if fvg_ok and micro_ok:
         confirm_score = 10
@@ -504,7 +507,7 @@ def check(state: dict, debug: bool = False) -> dict | None:
         return None
 
     comp_range_pips = round((comp_high - comp_low) / pip, 1)
-    disp_age_min    = round((int(_time.time()) - displacement["time"]) / 60)
+    disp_age_min = round((now_sec - displacement["time"]) / 60)
 
     reason = (
         f"HTF={htf_direction}(4H:{b4h}/1H:{b1h}) | "

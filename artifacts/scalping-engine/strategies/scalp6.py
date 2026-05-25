@@ -53,8 +53,6 @@ _fired_today: dict = {}
 _cooldown_lock = __import__('threading').Lock()
 
 
-
-
 def _load_cooldown() -> None:
     global _fired_today
     try:
@@ -76,16 +74,22 @@ def _save_cooldown() -> None:
 _load_cooldown()  # load once at import time — not on every cycle
 
 
-def _already_fired(symbol: str, boundary_side: str) -> bool:
-    key   = f"{symbol}|{boundary_side}"
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+def _already_fired(symbol: str, boundary_side: str,
+                   reference_ts: float | None = None) -> bool:
+    key  = f"{symbol}|{boundary_side}"
+    _now = (datetime.fromtimestamp(reference_ts, tz=timezone.utc)
+            if reference_ts else datetime.now(timezone.utc))
+    today = _now.strftime("%Y-%m-%d")
     with _cooldown_lock:
         return _fired_today.get(key) == today
 
 
-def _mark_fired(symbol: str, boundary_side: str) -> None:
-    key   = f"{symbol}|{boundary_side}"
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+def _mark_fired(symbol: str, boundary_side: str,
+                reference_ts: float | None = None) -> None:
+    key  = f"{symbol}|{boundary_side}"
+    _now = (datetime.fromtimestamp(reference_ts, tz=timezone.utc)
+            if reference_ts else datetime.now(timezone.utc))
+    today = _now.strftime("%Y-%m-%d")
     with _cooldown_lock:
         _load_cooldown()
         _fired_today[key] = today
@@ -96,12 +100,13 @@ def _mark_fired(symbol: str, boundary_side: str) -> None:
 # Asian session window (DST-aware — Tokyo does not observe DST, UTC is fixed)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _in_asian_session() -> bool:
+def _in_asian_session(reference_ts: float | None = None) -> bool:
     """
     00:00–09:00 UTC.  Upper bound 09:00 captures late Asian boundary
     reactions during the Tokyo-London overlap hour.
     """
-    now_utc = datetime.now(timezone.utc)
+    now_utc = (datetime.fromtimestamp(reference_ts, tz=timezone.utc)
+               if reference_ts else datetime.now(timezone.utc))
     mins    = now_utc.hour * 60 + now_utc.minute
     return 0 <= mins < 9 * 60
 
@@ -223,12 +228,13 @@ def _boundary_confluence(boundary: float, state: dict,
 
 def _find_asian_choch(s5m: dict, direction: str,
                       candles_5m: list,
-                      max_age_secs: int = 1800) -> dict | None:
+                      max_age_secs: int = 1800,
+                      now_sec: int = 0) -> dict | None:
     """
     Most recent 5M CHoCH matching direction, within 30 min, body ≥ 60%.
     Asian micro-structure produces more fake breaks — tighter body filter.
     """
-    now_sec  = int(_time.time())
+    now_sec  = now_sec or int(_time.time())
     choch_5m = s5m.get("choch", [])
     if not isinstance(choch_5m, list):
         return None
@@ -246,8 +252,6 @@ def _find_asian_choch(s5m: dict, direction: str,
 
         if candle is None:
             return None  # cannot verify body strength — reject to avoid weak confirmation
-
-
 
         rng  = candle.get("high", 0) - candle.get("low", 0)
         body = abs(candle.get("close", 0) - candle.get("open", 0))
@@ -276,10 +280,10 @@ def check(state: dict, debug: bool = False) -> dict | None:
 
     symbol  = state.get("symbol", "")
     pip     = config.get_symbol_cfg(symbol)["pip_size"]
-    now_sec = int(_time.time())
+    now_sec = int(state.get("reference_ts") or _time.time())
 
     # ── Gate 1: Asian session window ─────────────────────────────────────
-    if not _in_asian_session():
+    if not _in_asian_session(reference_ts=state.get("reference_ts")):
         if debug: print("    [S6] skip: outside Asian session (00:00–09:00 UTC)")
         return None
 
@@ -308,10 +312,7 @@ def check(state: dict, debug: bool = False) -> dict | None:
         return None
 
     # ── Gate 4: Session cooldown ──────────────────────────────────────────
-    # Prevents re-entry on the same boundary for the rest of the session.
-    # The Asian high and low are fixed all day — once the edge is used up,
-    # each subsequent test is statistically weaker.
-    if _already_fired(symbol, boundary_side):
+    if _already_fired(symbol, boundary_side, reference_ts=state.get("reference_ts")):
         if debug:
             print(f"    [S6] skip: already fired on {symbol} Asian {boundary_side} today "
                   f"— cooldown active until midnight UTC")
@@ -388,7 +389,8 @@ def check(state: dict, debug: bool = False) -> dict | None:
                 break
 
     # ── Gate 9: 5M CHoCH (body ≥ 60%, within 30 min) ─────────────────────
-    choch_event = _find_asian_choch(s5m, direction, candles_5m, max_age_secs=1800)
+    choch_event = _find_asian_choch(s5m, direction, candles_5m, max_age_secs=1800,
+                                    now_sec=now_sec)
 
     if choch_event is None:
         if debug:
@@ -469,8 +471,6 @@ def check(state: dict, debug: bool = False) -> dict | None:
     if net_rr < config.NET_MIN_RR:
         if debug: print(f"    [S6] REJECTED: net RR {net_rr} < {config.NET_MIN_RR} minimum")
         return None
-
-    
 
     reason = (
         f"Asian {boundary_side}={boundary:.5f} | "

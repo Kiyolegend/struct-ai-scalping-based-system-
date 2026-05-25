@@ -33,9 +33,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import config
 
 
-def _best_sweep(items: list, key: str, value: str, max_age_secs: int) -> dict | None:
+def _best_sweep(items: list, key: str, value: str, max_age_secs: int, now_sec: int = 0) -> dict | None:
     """Return the most recent item where item[key]==value that is not stale."""
-    now = int(_time.time())
+    now =  now_sec or int(_time.time())
     candidates = [
         item for item in items
         if isinstance(item, dict)
@@ -59,7 +59,7 @@ def check(state: dict, debug: bool = False) -> dict | None:
     if not price or not isinstance(price, (int, float)) or not math.isfinite(price):
         return None
 
-    now_sec = int(_time.time())
+    now_sec = int(state.get("reference_ts") or _time.time())
 
     # ── Step 1: Market condition — avoid strong trends ────────────────────
     b4h = bias.get("4h", "neutral")
@@ -86,10 +86,10 @@ def check(state: dict, debug: bool = False) -> dict | None:
     bos_15m   = s15m.get("bos",   [])
     choch_15m = s15m.get("choch", [])
 
-    bearish_choch = _best_sweep(choch_15m, "direction", "bearish", CHOCH_SWEEP_MAX_AGE)
-    bearish_bos   = _best_sweep(bos_15m,   "direction", "bearish", BOS_SWEEP_MAX_AGE)
-    bullish_choch = _best_sweep(choch_15m, "direction", "bullish", CHOCH_SWEEP_MAX_AGE)
-    bullish_bos   = _best_sweep(bos_15m,   "direction", "bullish", BOS_SWEEP_MAX_AGE)
+    bearish_choch = _best_sweep(choch_15m, "direction", "bearish", CHOCH_SWEEP_MAX_AGE, now_sec=now_sec)
+    bearish_bos   = _best_sweep(bos_15m,   "direction", "bearish", BOS_SWEEP_MAX_AGE, now_sec=now_sec)
+    bullish_choch = _best_sweep(choch_15m, "direction", "bullish", CHOCH_SWEEP_MAX_AGE, now_sec=now_sec)
+    bullish_bos   = _best_sweep(bos_15m,   "direction", "bullish", BOS_SWEEP_MAX_AGE, now_sec=now_sec)
 
     def _pick(choch_item, bos_item):
         if choch_item and bos_item:

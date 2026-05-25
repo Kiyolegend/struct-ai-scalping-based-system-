@@ -51,7 +51,7 @@ import config
 # Session open window detection
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _in_session_open_window() -> tuple[bool, str]:
+def _in_session_open_window( reference_ts: float | None = None) -> tuple[bool, str]:
     """
     Returns (True, session_name) if current time is within the first
     90 minutes of London or NY open. DST-aware.
@@ -59,7 +59,10 @@ def _in_session_open_window() -> tuple[bool, str]:
     London open : 08:00 local (07:00 UTC in BST, 08:00 UTC in GMT)
     NY open     : 08:00 local (12:00 UTC in EDT, 13:00 UTC in EST)
     """
-    now_utc = datetime.now(timezone.utc)
+    now_utc = (datetime.fromtimestamp(reference_ts, tz=timezone.utc)
+                if reference_ts else datetime.now(timezone.utc))
+
+
     mins    = now_utc.hour * 60 + now_utc.minute
 
     lo = int(datetime.now(ZoneInfo("Europe/London")).utcoffset().total_seconds() // 3600)
@@ -228,7 +231,7 @@ def check(state: dict, debug: bool = False) -> dict | None:
     candles_5m = s5m.get("candles", [])
 
     # ── Step 1: Session open window gate ──────────────────────────────────
-    in_window, window_name = _in_session_open_window()
+    in_window, window_name = _in_session_open_window(reference_ts=state.get("reference_ts"))
 
     if not in_window:
         if debug: print("    [S5] skip: not in London/NY open window (first 90 min of each session open)")
@@ -272,7 +275,7 @@ def check(state: dict, debug: bool = False) -> dict | None:
               f"bias={bias_score} align_bonus={alignment_bonus}")
 
     # ── Step 4: Counter CHoCH guard on 15M ───────────────────────────────
-    now_sec           = int(_time.time())
+    now_sec           = int(state.get("reference_ts") or _time.time())
     choch_15m         = s15m.get("choch", [])
     counter_direction = "bearish" if direction == "bullish" else "bullish"
 

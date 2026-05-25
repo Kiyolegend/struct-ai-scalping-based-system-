@@ -182,6 +182,7 @@ def build_state(symbol: str = None) -> dict | None:
         "current_price":     current_price,
         "sessions":          sessions,
         "tradeable_session": is_tradeable_session(sessions),
+        "reference_ts": latest_ts,
         "bias": {
             "15m": bias_15m,
             "1h":  bias_1h,
