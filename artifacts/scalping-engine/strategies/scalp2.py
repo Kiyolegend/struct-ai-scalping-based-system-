@@ -345,7 +345,7 @@ def check(state: dict, debug: bool = False) -> dict | None:
         print(f"    [S2] REJECTED: no strong reversal candle ({qual} required)")
         return None
 
-    if sl_dist < 7 * pip:
+    if sl_dist < config.MIN_SL_PIPS * pip:
         print(f"    [S2] REJECTED: SL too tight ({sl_dist/pip:.1f}p < 7)")
         return None
 

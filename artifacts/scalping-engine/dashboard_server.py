@@ -149,7 +149,7 @@ def _save_journal(entries: list) -> None:
         print(f"[JOURNAL] Save error: {e}")
 
 
-def _add_to_journal(decision: dict, lot: float, mode: str) -> None:
+def _add_to_journal(decision: dict, lot: float, mode: str, reference_ts: float | None = None) -> None:
     """Auto-add a fired signal to the persistent trade journal."""
     symbol    = decision.get("symbol", config.SYMBOL)
     cfg       = config.get_symbol_cfg(symbol)
@@ -180,7 +180,7 @@ def _add_to_journal(decision: dict, lot: float, mode: str) -> None:
     pnl_win  = round(tp_pips * lot * pip_value, 2)
     pnl_loss = round(-sl_pips * lot * pip_value, 2)
 
-    now = datetime.now(timezone.utc)
+    now = (datetime.fromtimestamp(reference_ts, tz=timezone.utc) if reference_ts else datetime.now(timezone.utc))
     entry = {
         "id":          str(uuid.uuid4())[:8],
         "timestamp":   now.strftime("%Y-%m-%d %H:%M UTC"),
@@ -519,7 +519,7 @@ def run_engine_cycle():
                 session_stats["trades_today"] += 1
                 _save_session_stats()
             signal_memory.record(approved_decision, best_state)
-            _add_to_journal(approved_decision, lot, mode_label)
+            _add_to_journal(approved_decision, lot, mode_label, reference_ts=best_state.get("reference_ts"))
             trade_entry = {
                 "time":       datetime.now(timezone.utc).strftime("%H:%M UTC"),
                 "mode":       mode_label,

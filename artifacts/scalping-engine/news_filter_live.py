@@ -33,13 +33,13 @@ SERVICE_TIMEOUT = 2          # seconds — fast timeout so the engine never stal
 _SERVICE_WARN_PRINTED = False  # suppress repeated connection error spam
 
 
-def _get_pair_impact(pair: str) -> dict | None:
+def _get_pair_impact(pair: str, at_ts: float | None = None) -> dict | None:
     """Call the live impact service for one pair. Returns None on any error."""
     global _SERVICE_WARN_PRINTED
     try:
         r = requests.get(
             f"{NEWS_IMPACT_URL}/api/impact/symbol",
-            params={"pair": pair},
+            params={"pair": pair, **({"at": int(at_ts)} if at_ts else {})},
             timeout=SERVICE_TIMEOUT,
         )
         r.raise_for_status()
@@ -109,8 +109,8 @@ def _in_daily_window(now: datetime) -> tuple[bool, str]:
     return False, ""
 
 
-def _static_global_blocked() -> tuple[bool, str]:
-    now = datetime.now(timezone.utc)
+def  _static_global_blocked(reference_ts: float | None = None) -> tuple[bool, str]:
+    now = (datetime.fromtimestamp(reference_ts, tz=timezone.utc) if reference_ts else datetime.now(timezone.utc))
     key = (now.year, now.month, now.day)
     if _is_first_friday(now):
         return True, "NFP Friday — US Non-Farm Payrolls — no trading all day"
@@ -122,8 +122,10 @@ def _static_global_blocked() -> tuple[bool, str]:
     return False, ""
 
 
-def _static_symbol_blocked(symbol: str) -> tuple[bool, str]:
-    now = datetime.now(timezone.utc)
+def _static_symbol_blocked(symbol: str, reference_ts: float | None = None) -> tuple[bool, str]:
+    now = (datetime.fromtimestamp(reference_ts, tz=timezone.utc) if reference_ts else datetime.now(timezone.utc))
+
+
     key = (now.year, now.month, now.day)
     if key in BOE_DATES and symbol in GBP_PAIRS:
         return True, f"BoE MPC decision day — {symbol} blocked"
@@ -134,7 +136,7 @@ def _static_symbol_blocked(symbol: str) -> tuple[bool, str]:
 
 # ── Public API (same interface as news_filter.py) ─────────────────────────────
 
-def is_global_blocked() -> tuple[bool, str]:
+def is_global_blocked(reference_ts: float | None = None) -> tuple[bool, str]:
     """
     Check if ALL pairs should be blocked right now.
 
@@ -146,7 +148,7 @@ def is_global_blocked() -> tuple[bool, str]:
     # First, always check the static calendar for absolute certainty
     # on the highest-stakes events (NFP day, Fed day) — these never
     # require a live service call to verify.
-    static_blocked, static_reason = _static_global_blocked()
+    static_blocked, static_reason = _static_global_blocked(reference_ts)
 
     # Query live service for USD/JPY as a global US-event proxy
     live_data = _get_pair_impact("USD/JPY")
@@ -166,7 +168,7 @@ def is_global_blocked() -> tuple[bool, str]:
     return static_blocked, (f"[STATIC] {static_reason}" if static_blocked else "")
 
 
-def is_symbol_blocked(symbol: str) -> tuple[bool, str]:
+def is_symbol_blocked(symbol: str, reference_ts: float | None = None) -> tuple[bool, str]:
     """
     Check if a specific pair should be blocked right now.
 
@@ -176,7 +178,7 @@ def is_symbol_blocked(symbol: str) -> tuple[bool, str]:
     Live integration benefit: detects mid-tier events (CPI, retail sales,
     PMI) that the static calendar misses entirely.
     """
-    live_data = _get_pair_impact(symbol)
+    live_data = _get_pair_impact(symbol, at_ts=reference_ts)
 
     if live_data is not None:
         if live_data.get("blocked"):
@@ -188,7 +190,7 @@ def is_symbol_blocked(symbol: str) -> tuple[bool, str]:
     return _static_symbol_blocked(symbol)
 
 
-def get_pair_confidence_penalty(symbol: str) -> int:
+def get_pair_confidence_penalty(symbol: str, reference_ts: float | None = None) -> int:
     """
     NEW function (not in original news_filter.py).
 
@@ -203,7 +205,7 @@ def get_pair_confidence_penalty(symbol: str) -> int:
         effective_min = config.MIN_CONFIDENCE + penalty
         signals = [s for s in strategy_scores if s["score"] >= effective_min]
     """
-    live_data = _get_pair_impact(symbol)
+    live_data = _get_pair_impact(symbol, at_ts=reference_ts)
     if live_data is not None:
         return live_data.get("confidence_penalty", 0)
     return 0
