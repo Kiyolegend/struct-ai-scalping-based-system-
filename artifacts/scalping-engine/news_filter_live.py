@@ -151,7 +151,7 @@ def is_global_blocked(reference_ts: float | None = None) -> tuple[bool, str]:
     static_blocked, static_reason = _static_global_blocked(reference_ts)
 
     # Query live service for USD/JPY as a global US-event proxy
-    live_data = _get_pair_impact("USD/JPY")
+    live_data = _get_pair_impact("USD/JPY", at_ts=reference_ts)
 
     if live_data is not None:
         if live_data.get("blocked"):

@@ -39,8 +39,9 @@ def get_active_sessions(reference_ts: int = None) -> list[str]:
     else:
         now_utc = datetime.now(timezone.utc)
     hour = now_utc.hour
-    lo = int(datetime.now(ZoneInfo("Europe/London")).utcoffset().total_seconds() // 3600)
-    ny = int(datetime.now(ZoneInfo("America/New_York")).utcoffset().total_seconds() // 3600)
+    _ref_dt = datetime.fromtimestamp(reference_ts, tz=timezone.utc) if reference_ts else datetime.now(timezone.utc)
+    lo = int(_ref_dt.astimezone(ZoneInfo("Europe/London")).utcoffset().total_seconds() // 3600)
+    ny = int(_ref_dt.astimezone(ZoneInfo("America/New_York")).utcoffset().total_seconds() // 3600)
     sessions = []
     if 0 <= hour < 9:                sessions.append("asian")
     if (8 - lo) <= hour < (17 - lo): sessions.append("london")

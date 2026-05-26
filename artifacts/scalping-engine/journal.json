@@ -40,10 +40,10 @@
     "lot": 0.02,
     "pnl_win": 6.04,
     "pnl_loss": -3.02,
-    "result": null,
-    "pnl": null,
+    "result": "L",
+    "pnl": -3.02,
     "reason": "inside 1H OB [1.34705-1.34865] | 5M CHoCH | 4H=bullish 1H=bullish | sess=['asian', 'london'] | spread=1.2pip netRR=1.62 | score=90/115",
-    "auto_monitor": true
+    "auto_monitor": false
   },
   {
     "id": "02987916",

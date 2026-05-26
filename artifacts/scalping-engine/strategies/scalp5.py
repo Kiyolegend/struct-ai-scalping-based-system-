@@ -65,8 +65,8 @@ def _in_session_open_window( reference_ts: float | None = None) -> tuple[bool, s
 
     mins    = now_utc.hour * 60 + now_utc.minute
 
-    lo = int(datetime.now(ZoneInfo("Europe/London")).utcoffset().total_seconds() // 3600)
-    ny = int(datetime.now(ZoneInfo("America/New_York")).utcoffset().total_seconds() // 3600)
+    lo = int(now_utc.astimezone(ZoneInfo("Europe/London")).utcoffset().total_seconds() // 3600)
+    ny = int(now_utc.astimezone(ZoneInfo("America/New_York")).utcoffset().total_seconds() // 3600)
 
     lo_open = (8 - lo) * 60      # 07:00 UTC in BST, 08:00 UTC in GMT
     ny_open = (8 - ny) * 60      # 12:00 UTC in EDT, 13:00 UTC in EST
