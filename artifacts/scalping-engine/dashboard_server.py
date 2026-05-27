@@ -76,12 +76,21 @@ engine_state = {
     "last_update":   None,
     "next_scan_in":  config.LOOP_INTERVAL,
     "cycle_count":   0,
+    "scan_secs":     None,
+    "avg_scan_secs": None,
+    "perf_warning":  False,
     "news_block":    "",
     "target_rr":     config.TARGET_RR,
     "default_lot":   config.DEFAULT_LOT,
     "occupied_symbols": [],
 }
+_scan_times = []
 state_lock = threading.Lock()
+_last_broker_ts: float = 0.0   # updated every scan with broker candle time
+def _broker_now_utc():
+    return (datetime.fromtimestamp(_last_broker_ts, tz=timezone.utc)
+            if _last_broker_ts > 0 else datetime.now(timezone.utc))
+
 STATS_FILE    = os.path.join(os.path.dirname(__file__), "session_stats.json")
 
 
@@ -418,7 +427,7 @@ def run_engine_cycle():
         with state_lock:
             engine_state["status"]      = "news_block"
             engine_state["news_block"]  = news_reason
-            engine_state["last_update"] = datetime.now(timezone.utc).strftime("%H:%M:%S UTC")
+            engine_state["last_update"] = _broker_now_utc().strftime("%H:%M:%S UTC")
         return
     else:
         with state_lock:
@@ -474,8 +483,13 @@ def run_engine_cycle():
     if best_state is None:
         with state_lock:
             engine_state["status"] = "error"
-            engine_state["last_update"] = datetime.now(timezone.utc).strftime("%H:%M:%S UTC")
+            engine_state["last_update"] = _broker_now_utc().strftime("%H:%M:%S UTC")
         return
+    
+    global _last_broker_ts
+    _last_broker_ts = best_state.get("reference_ts", _last_broker_ts)
+
+
 
     approved_decision = None
     block_reason      = None
@@ -519,9 +533,11 @@ def run_engine_cycle():
                 session_stats["trades_today"] += 1
                 _save_session_stats()
             signal_memory.record(approved_decision, best_state)
+            global _last_broker_ts
+            _last_broker_ts = best_state.get("reference_ts") or _last_broker_ts
             _add_to_journal(approved_decision, lot, mode_label, reference_ts=best_state.get("reference_ts"))
             trade_entry = {
-                "time":       datetime.now(timezone.utc).strftime("%H:%M UTC"),
+                "time":       _broker_now_utc().strftime("%H:%M UTC"),
                 "mode":       mode_label,
                 "symbol":     approved_decision.get("symbol", best_sym),
                 "strategy":   approved_decision.get("strategy", ""),
@@ -575,7 +591,17 @@ def engine_loop():
     time.sleep(2)
     while True:
         try:
+            _t0 = time.time()
             run_engine_cycle()
+            _dur = round(time.time() - _t0, 1)
+            _scan_times.append(_dur)
+            if len(_scan_times) > 5:
+                _scan_times.pop(0)
+            _avg = round(sum(_scan_times) / len(_scan_times), 1) 
+            with state_lock:
+                engine_state["scan_secs"]     = _dur
+                engine_state["avg_scan_secs"] = _avg
+                engine_state["perf_warning"]  = _avg > 25
         except Exception as e:
             with state_lock:
                 engine_state["status"] = "error"
@@ -599,13 +625,13 @@ def _auto_mark_result(tid: str, result: str) -> None:
                 e["auto_monitor"] = False
                 _save_journal(entries)
                 trade_date = e.get("date", "")
-                today_str  = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+                today_str  = _broker_now_utc().strftime("%Y-%m-%d")
                 if trade_date == today_str:
                     with stats_lock:
                         if result == "L":
-                            session_stats["consecutive_losses"] += 1
+                           session_stats["consecutive_losses"] += 1
                         else:        
-                            session_stats["consecutive_losses"] = 0
+                           session_stats["consecutive_losses"] = 0
                         _save_session_stats()
 
 
@@ -950,7 +976,7 @@ def set_journal_result():
                 matched = True
                 if prev_result != result:
                     trade_date = e.get("date", "")
-                    today_str  = datetime.now(timezone.utc).strftime("%Y-%m-%d") 
+                    today_str  = _broker_now_utc().strftime("%Y-%m-%d")
                     if trade_date == today_str:
                         with stats_lock:
                             if result == "L":

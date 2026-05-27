@@ -1190,9 +1190,13 @@
                          : d.status === 'news_block' ? '⏸ News window — cycle paused'
                          : d.status === 'error'      ? '❌ Error state'
                          : '⏳ ' + d.status;
+        const perfBadge = d.perf_warning
+          ? ` <span style="color:#f59e0b;font-size:11px;">⚠ Slow scan (${d.avg_scan_secs}s avg)</span>`
+          : '';
         document.getElementById('engineStatus').innerHTML =
-          `<span style="color:var(--text)">Cycle #${cycleCount}</span><br>
-           <span style="font-size:11px;">${statusText}</span>`;
+          `<span style="color:var(--text)">Cycle #${cycleCount}</span>${perfBadge}<br>
+          <span style="font-size:11px;">${statusText}</span>`;
+                     
         document.getElementById('lastBlock').textContent = d.last_block || '—';
 
         // News block banner
