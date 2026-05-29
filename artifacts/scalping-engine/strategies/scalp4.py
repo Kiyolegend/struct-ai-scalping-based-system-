@@ -14,7 +14,7 @@ Timeframe logic:
   4H + 1H  — bias direction
   5M       — compression, displacement, FVG retest, micro BOS/CHoCH
 
-Scoring breakdown (max 105):
+Scoring breakdown (max 115):
   HTF alignment        — up to 25  (4H+1H agree=25, 1H only=12, conflict=reject)
   Compression on 5M    — 20        (ranges contracting vs 15-candle baseline)
   Liquidity pool       — 15        (proper swing high/low clusters as draw)
@@ -518,7 +518,7 @@ def check(state: dict, debug: bool = False) -> dict | None:
         f"anchor={anchor_desc} | "
         f"pool={'✓' if pool['pool_ok'] else '✗'} "
         f"prox={prox_score}pts entry={entry_model} | "
-        f"sess={sessions} spread={spread_pips}pip netRR={net_rr} score={total_score}/100"
+        f"sess={sessions} spread={spread_pips}pip netRR={net_rr} score={total_score}/115"
     )
 
     return {

@@ -16,7 +16,7 @@ Hard gates (any failure = immediate exit, evaluated in order):
   8. S/R level OR zone within 10p of boundary (raw Asian level alone = reject)
   9. 5M CHoCH in reversal direction within 30 min, body ≥ 60%
 
-Scoring (max 120, min to fire 75):
+Scoring (max 140, min to fire 75):
   Session window           25   (required)
   Price proximity          25 (≤5p) / 15 (≤12p)
   1H alignment             20 (aligned) / 10 (neutral)

@@ -295,15 +295,17 @@ def check(state: dict, debug: bool = False) -> dict | None:
         return None
 
     # ── SL / TP ───────────────────────────────────────────────────────────
-    buf = config.SWEEP_SL_BUFFER_PIPS * pip
-
+    buf          = config.SWEEP_SL_BUFFER_PIPS * pip
+    wick_extreme = sweep_item.get("wick_extreme")
     if direction == "bullish":
-        sl = sweep_level - buf
+        sl_anchor = wick_extreme if wick_extreme is not None else sweep_level
+        sl        = sl_anchor - buf
         if sl >= price:
             if debug: print("    [S2] skip: SL not below entry for BUY")
             return None
     else:
-        sl = sweep_level + buf
+        sl_anchor = wick_extreme if wick_extreme is not None else sweep_level
+        sl        = sl_anchor + buf
         if sl <= price:
             if debug: print("    [S2] skip: SL not above entry for SELL")
             return None

@@ -321,11 +321,11 @@ def _scan_symbol(sym: str) -> tuple[dict | None, list, dict | None]:
         return None, [], None
 
     # ── Per-symbol news filter (BoE → GBP/USD only, ECB → EUR/USD only) ──
-    sym_blocked, sym_news_reason = is_symbol_blocked(sym)
+    sym_blocked, sym_news_reason = is_symbol_blocked(sym,reference_ts=_last_broker_ts or None)
     if sym_blocked:
         print(f"[NEWS] ⏸  {sym} skipped: {sym_news_reason}")
         return None, [], None
-    news_penalty = get_pair_confidence_penalty(sym)
+    news_penalty = get_pair_confidence_penalty(sym, reference_ts=_last_broker_ts or None)
 
     cfg = config.get_symbol_cfg(sym)
 
@@ -414,14 +414,16 @@ def _scan_symbol(sym: str) -> tuple[dict | None, list, dict | None]:
 
 
 def run_engine_cycle():
+    global _last_broker_ts 
     _reset_daily_stats_if_needed()
     with state_lock:
-        engine_state["sessions"] = get_active_sessions()
-    
+        engine_state["sessions"] = get_active_sessions(reference_ts=_last_broker_ts if _last_broker_ts > 0 
+    else None
+    )
      
 
     # ── News filter — global block (Fed, NFP, daily windows) stops all pairs ─
-    globally_blocked, news_reason = is_global_blocked()
+    globally_blocked, news_reason = is_global_blocked(reference_ts=_last_broker_ts or None)
     if globally_blocked:
         print(f"[NEWS] ⏸  All pairs blocked: {news_reason}")
         with state_lock:
@@ -450,6 +452,7 @@ def run_engine_cycle():
     all_scores       = []
 
     def _scan_with_sym(sym):
+          
         return sym, _scan_symbol(sym)
 
     with ThreadPoolExecutor(max_workers=len(scan_symbols)) as executor:
@@ -486,7 +489,7 @@ def run_engine_cycle():
             engine_state["last_update"] = _broker_now_utc().strftime("%H:%M:%S UTC")
         return
     
-    global _last_broker_ts
+    
     _last_broker_ts = best_state.get("reference_ts", _last_broker_ts)
 
 
@@ -533,7 +536,7 @@ def run_engine_cycle():
                 session_stats["trades_today"] += 1
                 _save_session_stats()
             signal_memory.record(approved_decision, best_state)
-            global _last_broker_ts
+            
             _last_broker_ts = best_state.get("reference_ts") or _last_broker_ts
             _add_to_journal(approved_decision, lot, mode_label, reference_ts=best_state.get("reference_ts"))
             trade_entry = {
@@ -573,7 +576,7 @@ def run_engine_cycle():
         engine_state["scan_symbols"]       = scan_symbols
         engine_state["trades_today"]       = session_stats["trades_today"]
         engine_state["consecutive_losses"] = session_stats["consecutive_losses"]
-        engine_state["last_update"]        = datetime.now(timezone.utc).strftime("%H:%M:%S UTC")
+        engine_state["last_update"]        = _broker_now_utc().strftime("%H:%M:%S UTC")
         engine_state["cycle_count"]       += 1
         if block_reason:
             engine_state["last_block"] = block_reason
