@@ -348,7 +348,8 @@ def _scan_symbol(sym: str) -> tuple[dict | None, list, dict | None]:
     else:
         S6_NAME = "Asian Range Boundary Reaction"
         
-        print(f"  [NEWS-PENALTY] {sym}  penalty={news_penalty}  threshold={config.MIN_CONFIDENCE + news_penalty}")
+        if news_penalty > 0:
+            print(f"  [NEWS-PENALTY] {sym}  penalty={news_penalty}  threshold={config.MIN_CONFIDENCE + news_penalty}")
         signals = [
             s for s in strategy_scores
             if s["fired"] and s["score"] >= config.MIN_CONFIDENCE + news_penalty

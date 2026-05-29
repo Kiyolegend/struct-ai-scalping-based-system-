@@ -238,8 +238,8 @@ def check(state: dict, debug: bool = False) -> dict | None:
         print(f"    [S1] {direction} | bias={bias_score} pb={pullback_score} bos={bos_score} "
               f"loc={location_score} sess={session_score} zone={zone_score} → {total_score}")
 
-    if total_score < 85:
-        if debug: print(f"    [S1] skip: score {total_score} < 85")
+    if total_score < max(85, config.MIN_CONFIDENCE):
+        if debug: print(f"    [S1] skip: score {total_score} < {max(85, config.MIN_CONFIDENCE)}")
         return None
 
     # ── SL / TP ───────────────────────────────────────────────────────────

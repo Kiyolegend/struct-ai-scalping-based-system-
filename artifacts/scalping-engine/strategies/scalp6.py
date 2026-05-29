@@ -429,8 +429,8 @@ def check(state: dict, debug: bool = False) -> dict | None:
             f"→ TOTAL {total_score}/120"
         )
 
-    if total_score < 75:
-        if debug: print(f"    [S6] skip: score {total_score} < 75 minimum")
+    if total_score < max(75, config.MIN_CONFIDENCE):
+        if debug: print(f"    [S6] skip: score {total_score} < {max(75, config.MIN_CONFIDENCE)} minimum")
         return None
 
     # ── SL / TP ───────────────────────────────────────────────────────────
