@@ -18,6 +18,13 @@ Session 3 refinements applied:
   - Distance hard reject tightened from >15p → >10p (no chase entries)
   - Distance scoring: ≤15p tier (5pts) removed — 10p is now the outer limit
   - Counter-BOS filter added: any counter-direction 5M BOS within 30min = skip
+
+Quality upgrades applied (v2):
+  - GATE: Post-BOS structure must hold — after the most recent 5M BOS fires,
+    subsequent 5M candles must not make a new low (bullish) or new high (bearish)
+    beyond the close of the very first post-BOS candle.
+    Catches setups where the BOS was valid when it fired but the continuation has
+    already failed — prevents entering into a broken 5M structure.
 """
 
 import sys, os, math, time as _time
@@ -35,6 +42,36 @@ def _last_label(structure: list, label: str) -> dict | None:
     return None
 
 
+# ── NEW: Post-BOS structure holds ─────────────────────────────────────────────
+def _structure_holds(candles_5m: list, confirm_time: int, direction: str) -> bool:
+    """
+    After the 5M BOS timestamp, subsequent 5M candles must not violate the
+    continuation by making a new low (bullish) or new high (bearish) beyond
+    the close of the very first post-BOS candle.
+
+    This catches the case where the BOS was genuine at the time it fired but
+    price has since reversed — the pullback continuation has already failed
+    and the setup should be skipped entirely.
+
+    Returns True (structure intact) when:
+      - Fewer than 2 candles exist after the event (too early to judge).
+      - No subsequent candle has violated the anchor close.
+    Returns False (structure broken) when a subsequent candle's low (bullish)
+    or high (bearish) breaches the first post-BOS candle's close.
+    """
+    post = [c for c in candles_5m if c.get("time", 0) > confirm_time]
+    if len(post) < 2:
+        return True
+
+    anchor_close = post[0].get("close", 0)
+    subsequent   = post[1:]
+
+    if direction == "bullish":
+        return not any(c.get("low", 0) < anchor_close for c in subsequent)
+    else:
+        return not any(c.get("high", float("inf")) > anchor_close for c in subsequent)
+
+
 def check(state: dict, debug: bool = False) -> dict | None:
     if not isinstance(state, dict):
         return None
@@ -43,6 +80,7 @@ def check(state: dict, debug: bool = False) -> dict | None:
     price = state.get("current_price")
     s5m   = state.get("5m", {})
     s15m  = state.get("15m", {})
+    candles_5m = s5m.get("candles", [])
 
     if not price or not isinstance(price, (int, float)) or not math.isfinite(price):
         return None
@@ -176,6 +214,20 @@ def check(state: dict, debug: bool = False) -> dict | None:
         if debug: print(f"    [S1] skip: counter {counter_dir} BOS on 5M within 30min")
         return None
 
+    # ── NEW GATE: Post-BOS structure must hold ────────────────────────────
+    # After the most recent valid BOS fired, the pullback continuation must
+    # still be intact. If subsequent 5M candles have already broken back
+    # through the first post-BOS close, the setup has failed — skip and wait
+    # for a fresh BOS rather than entering a broken continuation.
+    recent_bos_sorted = sorted(matching_bos, key=lambda x: x.get("time", 0), reverse=True)
+    confirm_time_bos  = recent_bos_sorted[0].get("time", 0) if recent_bos_sorted else 0
+    if confirm_time_bos > 0 and candles_5m:
+        if not _structure_holds(candles_5m, confirm_time_bos, direction):
+            if debug:
+                print(f"    [S1] skip: post-BOS structure violated "
+                      f"— {direction} continuation already invalidated, waiting for fresh BOS")
+            return None
+
     # ── Step 6: Session timing ────────────────────────────────────────────
     sessions       = state.get("sessions", [])
     sessions_lower = [s.lower() for s in sessions]
@@ -219,9 +271,8 @@ def check(state: dict, debug: bool = False) -> dict | None:
     # This must happen before the MIN_CONFIDENCE check so the upgraded score
     # is what gets evaluated — not the lower pre-upgrade score.
     if len(matching_bos) < 2:
-        candles_5m_raw  = s5m.get("candles", [])
         is_displacement = False
-        for c in reversed(candles_5m_raw[-6:]):
+        for c in reversed(candles_5m[-6:]):
             o_ = c.get("open", 0); h_ = c.get("high", 0)
             l_ = c.get("low",  0); cl_= c.get("close",0)
             if (cl_ > o_) if direction == "bullish" else (cl_ < o_):
@@ -331,7 +382,7 @@ def check(state: dict, debug: bool = False) -> dict | None:
     reason   = (
         f"4H={b4h} 1H={b1h} | "
         f"15M {pullback_label}={pb_qual} age={pb_age_h}h dist={dist_pips:.1f}p | "
-        f"5M BOS {len(matching_bos)}× | loc={location_score}pts | "
+        f"5M BOS {len(matching_bos)}× ✓held | loc={location_score}pts | "
         f"sess={sessions} zone={'✓' if zone_ok else '✗'} SL={sl_source} | "
         f"spread={spread_pips}pip netRR={net_rr} score={total_score}/100"
     )

@@ -10,6 +10,19 @@ Timeframe logic:
   4H       — OB stacking bonus (confluence)
   5M       — FVG detection + entry confirmation (CHoCH/BOS)
 
+Quality upgrades applied (v2):
+  - GATE: Post-confirmation structure must hold — after the 5M CHoCH/BOS fires,
+    subsequent 5M candles must not make a new low (bullish) or new high (bearish)
+    beyond the close of the very first post-confirmation candle.
+    Catches OB reactions where price confirmed a reversal but has since continued
+    in the original direction — prevents entering into a broken structure.
+  - SCORE: S3-local minimum score calibrated to max score (85/115 = 73.9%).
+    Using raw MIN_CONFIDENCE=80 against a 115-max strategy is inconsistent:
+    without 4H OB or FVG bonuses the reachable max drops to ~90, making
+    80/90=89% a near-impossible bar that silently blocks clean simple setups.
+    S3_MIN_SCORE=85 requires genuine institutional confluence to fire while
+    still permitting strong setups that lack one optional bonus.
+
 Scoring breakdown (max ~115):
   HTF alignment        — up to 15  (4H+1H agree=15, 4H only=8, conflict=reject)
   1H OB found          — 25        (unmitigated OB in bias direction)
@@ -19,7 +32,7 @@ Scoring breakdown (max ~115):
   Session timing       — 10        (London/NY=10)
   5M confirmation      — up to 20  (CHoCH body≥50%=20, BOS body≥60%=10)
 
-Minimum score: config.MIN_CONFIDENCE (default 80)
+Minimum score: max(config.MIN_CONFIDENCE, 85)  [S3 local min — see note above]
 Entry = market, SL = beyond OB edge + 5p buffer, TP = 2R
 """
 
@@ -213,6 +226,36 @@ def detect_fvgs(candles: list, current_price: float, symbol: str = "") -> list:
     return [{"type": f["type"], "top": f["top"], "bottom": f["bottom"]} for f in bull + bear]
 
 
+# ── NEW: Post-confirmation structure holds ────────────────────────────────────
+def _structure_holds(candles_5m: list, confirm_time: int, direction: str) -> bool:
+    """
+    After the 5M confirmation event (CHoCH or BOS) timestamp, subsequent 5M
+    candles must not violate the reversal by making a new low (bullish) or new
+    high (bearish) beyond the close of the very first post-confirmation candle.
+
+    This catches the case where the CHoCH/BOS was genuine at the time it fired
+    but price has since continued in the original direction — the OB reaction
+    has already failed and the setup should be skipped entirely.
+
+    Returns True (structure intact) when:
+      - Fewer than 2 candles exist after the event (too early to judge).
+      - No subsequent candle has violated the anchor close.
+    Returns False (structure broken) when a subsequent candle's low (bullish)
+    or high (bearish) breaches the first post-confirmation candle's close.
+    """
+    post = [c for c in candles_5m if c.get("time", 0) > confirm_time]
+    if len(post) < 2:
+        return True
+
+    anchor_close = post[0].get("close", 0)
+    subsequent   = post[1:]
+
+    if direction == "bullish":
+        return not any(c.get("low", 0) < anchor_close for c in subsequent)
+    else:
+        return not any(c.get("high", float("inf")) > anchor_close for c in subsequent)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # S3 main check
 # ─────────────────────────────────────────────────────────────────────────────
@@ -334,21 +377,20 @@ def check(state: dict, debug: bool = False) -> dict | None:
     # ── Step 6: 5M confirmation — CHoCH or BOS within 1h ─────────────────
     bos_5m   = s5m.get("bos", [])
     choch_5m = s5m.get("choch", [])
-    conf_dir = direction  # "bullish" or "bearish"
-
     conf_choch = next(
         (c for c in sorted(choch_5m, key=lambda x: x.get("time", 0), reverse=True)
-         if isinstance(c, dict) and c.get("direction") == conf_dir
+         if isinstance(c, dict) and c.get("direction") == direction
          and (now_sec - c.get("time", 0)) <= 3600), None
     )
     conf_bos = next(
         (b for b in sorted(bos_5m, key=lambda x: x.get("time", 0), reverse=True)
-         if isinstance(b, dict) and b.get("direction") == conf_dir
+         if isinstance(b, dict) and b.get("direction") == direction
          and (now_sec - b.get("time", 0)) <= 3600), None
     )
 
     confirm_score = 0
     confirm_type  = ""
+    confirm_event = None
 
     if conf_choch:
         # Check body strength ≥ 50%
@@ -361,6 +403,7 @@ def check(state: dict, debug: bool = False) -> dict | None:
         if body_ok:
             confirm_score = 20
             confirm_type  = "CHoCH"
+            confirm_event = conf_choch
 
     if confirm_score == 0 and conf_bos:
         # Check body strength ≥ 60%
@@ -373,12 +416,26 @@ def check(state: dict, debug: bool = False) -> dict | None:
         if body_ok:
             confirm_score = 10
             confirm_type  = "BOS"
+            confirm_event = conf_bos
 
     if confirm_score == 0:
         if debug:
             in_str = "Inside OB" if inside_ob else "Near OB"
             print(f"    [S3] waiting: {in_str}{fvg_label} — need 5M {direction} confirmation")
         return None
+
+    # ── NEW GATE: Post-confirmation structure must hold ───────────────────
+    # After the CHoCH/BOS fired, the OB reaction must still be intact.
+    # If subsequent 5M candles have already broken back through the first
+    # post-confirmation close, the setup has failed — skip and wait for a
+    # fresh entry rather than chasing a structure that has already collapsed.
+    confirm_time = confirm_event.get("time", 0) if confirm_event else 0
+    if confirm_time > 0 and candles_5m:
+        if not _structure_holds(candles_5m, confirm_time, direction):
+            if debug:
+                print(f"    [S3] skip: post-{confirm_type} structure violated "
+                      f"— {direction} OB reaction already invalidated, waiting for fresh setup")
+            return None
 
     # ── Total score ───────────────────────────────────────────────────────
     total_score = (
@@ -390,8 +447,14 @@ def check(state: dict, debug: bool = False) -> dict | None:
         print(f"    [S3] {direction} | align={align_score} ob={ob_score} ob4h={ob4h_score} "
               f"fvg={fvg_score} zone={zone_score} sess={session_score} conf={confirm_score} → {total_score}")
 
-    if total_score < config.MIN_CONFIDENCE:
-        if debug: print(f"    [S3] skip: score {total_score}  < {config.MIN_CONFIDENCE} minimum")
+    # S3-local minimum: raw MIN_CONFIDENCE=80 is inconsistent against a 115-max
+    # strategy. Without 4H OB or FVG bonuses the reachable max drops to ~90,
+    # making 80/90=89% an unreachable bar that silently blocks clean simple setups.
+    # S3_MIN_SCORE=85 (85/115=73.9%) requires genuine confluence to fire while
+    # still permitting strong setups that lack one of the optional bonuses.
+    S3_MIN_SCORE = max(config.MIN_CONFIDENCE, 85)
+    if total_score < S3_MIN_SCORE:
+        if debug: print(f"    [S3] skip: score {total_score} < {S3_MIN_SCORE} (S3 local min, max=115)")
         return None
 
     # ── SL / TP — SL beyond OB edge ──────────────────────────────────────
@@ -438,7 +501,7 @@ def check(state: dict, debug: bool = False) -> dict | None:
     in_str  = "inside" if inside_ob else "near"
     reason  = (
         f"{in_str} {ob_desc} [{ob['bottom']:.5f}-{ob['top']:.5f}]{fvg_label} | "
-        f"5M {confirm_type} | 4H={b4h} 1H={b1h} | "
+        f"5M {confirm_type} ✓held | 4H={b4h} 1H={b1h} | "
         f"sess={sessions} | spread={spread_pips}pip netRR={net_rr} | "
         f"score={total_score}/115"
     )
