@@ -471,6 +471,8 @@ def check(state: dict, debug: bool = False) -> dict | None:
     if net_rr < config.NET_MIN_RR:
         if debug: print(f"    [S6] REJECTED: net RR {net_rr} < {config.NET_MIN_RR} minimum")
         return None
+    
+    _mark_fired(symbol, boundary_side, reference_ts=state.get("reference_ts"))
 
     reason = (
         f"Asian {boundary_side}={boundary:.5f} | "

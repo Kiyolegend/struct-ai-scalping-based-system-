@@ -1634,6 +1634,14 @@
           <span style="background:var(--red);color:#fff;font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px;">LOSS ${pnl}</span>
           <button onclick="unmarkTrade('${e.id}')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:11px;" title="Undo">↩</button>
         </td>`;
+      }       } else if (e.result === '?') {
+        resultCell = `<td style="padding:8px 8px;">
+          <div style="display:flex;gap:6px;align-items:center;">
+            <span style="background:#f59e0b;color:#000;font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px;" title="System was offline when this trade closed">?</span>
+            <button onclick="markTrade('${e.id}','W')" style="background:var(--green);color:#000;border:none;border-radius:4px;padding:3px 10px;font-size:11px;font-weight:700;cursor:pointer;">W</button>
+            <button onclick="markTrade('${e.id}','L')" style="background:var(--red);color:#fff;border:none;border-radius:4px;padding:3px 10px;font-size:11px;font-weight:700;cursor:pointer;">L</button>
+          </div>
+        </td>`;
       } else {
         resultCell = `<td style="padding:8px 8px;">
           <div style="display:flex;gap:6px;">

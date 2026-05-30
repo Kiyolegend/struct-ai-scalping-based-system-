@@ -625,10 +625,16 @@ def _auto_mark_result(tid: str, result: str) -> None:
         for e in entries:
             if e.get("id") == tid and e.get("result") is None:
                 e["result"]       = result
-                e["pnl"]          = e["pnl_win"] if result == "W" else e["pnl_loss"]
+                if result == "W":
+                    e["pnl"] = e.get("pnl_win")
+                elif result == "L":
+                     e["pnl"] = e.get("pnl_loss")
+                else:
+                     e["pnl"] = None         
                 e["auto_monitor"] = False
                 _save_journal(entries)
-                trade_date = e.get("date", "")
+                if result in ("W", "L"):
+                  trade_date = e.get("date", "")
                 today_str  = _broker_now_utc().strftime("%Y-%m-%d")
                 if trade_date == today_str:
                     with stats_lock:
@@ -642,6 +648,7 @@ def _auto_mark_result(tid: str, result: str) -> None:
 def _outcome_watcher() -> None:
     """Background thread: polls price levels (SIM) or MT5 history (LIVE)
     and auto-marks pending journal entries W or L."""
+    SIM_MAX_PENDING_HOURS = 8   
     while True:
         time.sleep(config.LOOP_INTERVAL)
         try:
@@ -652,6 +659,7 @@ def _outcome_watcher() -> None:
             if not pending:
                 continue
             now_utc = datetime.now(timezone.utc)
+            today_str = now_utc.strftime("%Y-%m-%d")
             for entry in pending:
                 sym       = entry.get("symbol", "")
                 direction = entry.get("direction", "BUY")
@@ -662,6 +670,21 @@ def _outcome_watcher() -> None:
                 if sl == 0 or tp == 0:
                     continue
                 if mode == "SIM":
+                    trade_date = entry.get("date", "")
+                    stale_date = (trade_date and trade_date != today_str)
+                    try:
+                        entry_dt  = datetime.strptime(
+                            entry.get("timestamp", ""), "%Y-%m-%d %H:%M UTC"
+                        ).replace(tzinfo=timezone.utc)
+                        age_hours = (now_utc - entry_dt).total_seconds() / 3600
+                        stale_age = age_hours > SIM_MAX_PENDING_HOURS
+                    except ValueError:
+                        stale_age = False
+                    if stale_date or stale_age:
+                        print(f"  [WATCHER] SIM trade {tid} ({sym}) unresolvable offline — marking ?")
+                        _auto_mark_result(tid, "?")
+                        continue
+                  
                     with prices_lock:
                         price = symbol_prices.get(sym)
                     if price is None:
