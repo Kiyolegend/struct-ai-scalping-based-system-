@@ -220,8 +220,8 @@ def check(state: dict, debug: bool = False) -> dict | None:
 
     def _pick(choch_item, bos_item):
         if choch_item and bos_item:
-            if abs(bos_item.get("time", 0) - choch_item.get("time", 0)) <= 2 * 3600:
-                return choch_item
+            
+                
             return choch_item
         return choch_item or bos_item
 

@@ -265,7 +265,7 @@ def _ob_at_level(candles: list, level: float, pip: float,
     """
     n         = len(candles)
     threshold = threshold_pips * pip
-    min_size  = 5 * pip
+    min_size  = 3 * pip
     if n < 6:
         return False
 
@@ -302,13 +302,7 @@ def _ob_at_level(candles: list, level: float, pip: float,
                         if not any(fc["close"] > ob_mid for fc in candles[i + 1:]):
                             return True
 
-     # ── 3. Order blocks on 5M and 15M candles
-    candles_5m  = s5m.get("candles", [])
-    candles_15m = s15m.get("candles", [])
-    for tf_candles, tf_label in ((candles_5m, "5M-OB"), (candles_15m, "15M-OB")):
-        if tf_candles and _ob_at_level(tf_candles, breakout_edge, pip, threshold_pips):
-            return True, f"{tf_label}@{breakout_edge:.5f}"
-    return False, ""
+        return False
 
 
 
@@ -359,6 +353,12 @@ def _has_zone_anchor(breakout_edge: float, state: dict, s5m: dict,
                 return True, f"zone[{bottom:.5f}-{top:.5f}]"
 
     
+    # ── 3. Order blocks on 5M and 15M candles
+    candles_5m  = s5m.get("candles", [])
+    candles_15m = s15m.get("candles", [])
+    for tf_candles, tf_label in ((candles_5m, "5M-OB"), (candles_15m, "15M-OB")):
+        if tf_candles and _ob_at_level(tf_candles, breakout_edge, pip, threshold_pips):
+            return True, f"{tf_label}@{breakout_edge:.5f}"
     return False, ""
 
 

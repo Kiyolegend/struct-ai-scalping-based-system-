@@ -426,7 +426,7 @@ def check(state: dict, debug: bool = False) -> dict | None:
             f"first={first_test_bonus}({'yes' if is_first else 'no'}) "
             f"fresh={sweep_fresh_bonus}({sweep_age_min}min) "
             f"choch={confirm_score}({choch_age_min}min ago) "
-            f"→ TOTAL {total_score}/120"
+            f"→ TOTAL {total_score}/140"
         )
 
     if total_score < max(75, config.MIN_CONFIDENCE):
@@ -483,7 +483,7 @@ def check(state: dict, debug: bool = False) -> dict | None:
         f"confluence={confluence_desc}{'+zone' if zone_bonus else ''} | "
         f"5M CHoCH {choch_age_min}min ago | "
         f"spread={spread_pips}pip netRR={net_rr} | "
-        f"score={total_score}/120"
+        f"score={total_score}/140"
     )
 
     return {
