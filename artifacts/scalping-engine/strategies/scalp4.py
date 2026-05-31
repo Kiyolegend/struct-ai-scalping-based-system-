@@ -302,7 +302,7 @@ def _ob_at_level(candles: list, level: float, pip: float,
                         if not any(fc["close"] > ob_mid for fc in candles[i + 1:]):
                             return True
 
-        return False
+    return False
 
 
 
