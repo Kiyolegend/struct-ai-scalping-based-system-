@@ -252,7 +252,65 @@ def _proximity_score(price: float, comp_high: float, comp_low: float,
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Zone / OB / S/R anchor at breakout edge — structural gate
-# ─────────────────────────────────────────────────────────────────────────────
+# ───────────────────────────────────────────────────────────────────────────
+
+def _ob_at_level(candles: list, level: float, pip: float,
+                 threshold_pips: float = 15.0) -> bool:
+    """
+    Returns True if an unmitigated Order Block (bullish or bearish) sits
+    within threshold_pips of `level`.
+      Bullish OB: bearish candle followed by an impulsive up-break.
+      Bearish OB: bullish candle followed by an impulsive down-break.
+    Mitigation: no subsequent candle closes through the OB mid-point.
+    """
+    n         = len(candles)
+    threshold = threshold_pips * pip
+    min_size  = 5 * pip
+    if n < 6:
+        return False
+
+    for i in range(1, n - 3):
+        c        = candles[i]
+        lookback = candles[max(0, i - 8):i]
+        avg_rng  = (
+            sum(x["high"] - x["low"] for x in lookback) / len(lookback)
+            if lookback else 0
+        )
+        if avg_rng == 0:
+            continue
+        fwd = candles[i + 1: min(i + 5, n)]
+
+        if c["close"] < c["open"] and (c["high"] - c["low"]) >= min_size:
+            future_high = max((x["close"] for x in fwd), default=0)
+            if future_high > c["high"]:
+                brk = max(fwd, key=lambda x: x["high"] - x["low"], default=None)
+                if brk and (brk["high"] - brk["low"]) >= 1.5 * avg_rng:
+                    center = (c["high"] + c["low"]) / 2
+                    if abs(center - level) <= threshold:
+                        ob_mid = (c["open"] + c["close"]) / 2
+                        if not any(fc["close"] < ob_mid for fc in candles[i + 1:]):
+                            return True
+
+        elif c["close"] > c["open"] and (c["high"] - c["low"]) >= min_size:
+            future_low = min((x["close"] for x in fwd), default=float("inf"))
+            if future_low < c["low"]:
+                brk = max(fwd, key=lambda x: x["high"] - x["low"], default=None)
+                if brk and (brk["high"] - brk["low"]) >= 1.5 * avg_rng:
+                    center = (c["high"] + c["low"]) / 2
+                    if abs(center - level) <= threshold:
+                        ob_mid = (c["open"] + c["close"]) / 2
+                        if not any(fc["close"] > ob_mid for fc in candles[i + 1:]):
+                            return True
+
+     # ── 3. Order blocks on 5M and 15M candles
+    candles_5m  = s5m.get("candles", [])
+    candles_15m = s15m.get("candles", [])
+    for tf_candles, tf_label in ((candles_5m, "5M-OB"), (candles_15m, "15M-OB")):
+        if tf_candles and _ob_at_level(tf_candles, breakout_edge, pip, threshold_pips):
+            return True, f"{tf_label}@{breakout_edge:.5f}"
+    return False, ""
+
+
 
 def _has_zone_anchor(breakout_edge: float, state: dict, s5m: dict,
                      pip: float, threshold_pips: float = 15.0) -> tuple[bool, str]:
