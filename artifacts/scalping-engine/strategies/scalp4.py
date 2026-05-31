@@ -186,7 +186,7 @@ def _detect_displacement(candles: list, comp_high: float, comp_low: float,
 # FVG retest + micro BOS/CHoCH confirmation (FIX 6)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _detect_fvg(candles: list, direction: str, price: float) -> bool:
+def _detect_fvg(candles: list, direction: str, price: float, pip: float = 0.0001) -> bool:
     if len(candles) < 3:
         return False
 
@@ -197,13 +197,13 @@ def _detect_fvg(candles: list, direction: str, price: float) -> bool:
         if direction == "bullish":
             gap_bottom = candle_a.get("high", 0)
             gap_top    = candle_c.get("low",   0)
-            if gap_top > gap_bottom and gap_bottom <= price <= gap_top:
+            if gap_top > gap_bottom and (gap_top - gap_bottom) >= 3 * pip and gap_bottom <= price <= gap_top:
                 return True
 
         elif direction == "bearish":
             gap_top    = candle_a.get("low",  0)
             gap_bottom = candle_c.get("high",  0)
-            if gap_bottom < gap_top and gap_bottom <= price <= gap_top:
+            if gap_bottom < gap_top and (gap_top - gap_bottom) >= 3 * pip and gap_bottom <= price <= gap_top:
                 return True
 
     return False
@@ -489,7 +489,7 @@ def check(state: dict, debug: bool = False) -> dict | None:
         print(f"    [S4] proximity: {dist:.1f}p from breakout edge → score={prox_score}")
 
     # ── Step 7: FVG retest + micro BOS/CHoCH confirmation (FIX 6) ─────────
-    fvg_ok   = _detect_fvg(candles_5m, htf_direction, price)
+    fvg_ok   = _detect_fvg(candles_5m, htf_direction, price, pip)
     micro_ok = _detect_micro_confirmation(s5m, htf_direction, max_age_secs=1800, now_sec=now_sec)
 
     if fvg_ok and micro_ok:
