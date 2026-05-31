@@ -32,12 +32,13 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import config
 
 
-def _last_label(structure: list, label: str) -> dict | None:
+def _last_label(structure: list, label: str | tuple) -> dict | None:
     """Return the most recent structure point dict with a given label."""
+    labels = (label,) if isinstance(label, str) else label
     for s in reversed(structure[-20:]):
         if not isinstance(s, dict):
             continue
-        if s.get("label") == label:
+        if s.get("label") in labels:
             return s
     return None
 
@@ -306,7 +307,7 @@ def check(state: dict, debug: bool = False) -> dict | None:
     zone_thresh    = near_pips * pip
 
     def _is_strong_5m_level(lvl: float, kind: str) -> bool:
-        lvl_15m = (_last_label(struct_15m_pts, "HL" if kind == "support" else "LH") or {}).get("price")
+        lvl_15m = (_last_label(struct_15m_pts, ("HL", "EQL") if kind == "support" else ("LH", "EQH")) or {}).get("price")
         if lvl_15m is not None and abs(lvl - lvl_15m) <= align_thresh:
             return True
         for zone in zones_all:
@@ -322,8 +323,8 @@ def check(state: dict, debug: bool = False) -> dict | None:
     sl_source = "5M"
 
     if direction == "bullish":
-        sl_5m_lvl  = (_last_label(struct_5m,      "HL") or {}).get("price")
-        sl_15m_lvl = (_last_label(struct_15m_pts, "HL") or {}).get("price")
+        sl_5m_lvl  = (_last_label(struct_5m,      ("HL", "EQL")) or {}).get("price")
+        sl_15m_lvl = (_last_label(struct_15m_pts, ("HL", "EQL")) or {}).get("price")
         if sl_5m_lvl is not None and _is_strong_5m_level(sl_5m_lvl, "support"):
             sl_anchor = sl_5m_lvl
         elif sl_15m_lvl is not None:
@@ -336,8 +337,8 @@ def check(state: dict, debug: bool = False) -> dict | None:
             if debug: print("    [S1] skip: SL not below entry for BUY")
             return None
     else:
-        sl_5m_lvl  = (_last_label(struct_5m,      "LH") or {}).get("price")
-        sl_15m_lvl = (_last_label(struct_15m_pts, "LH") or {}).get("price")
+        sl_5m_lvl  = (_last_label(struct_5m,      ("LH", "EQH")) or {}).get("price")
+        sl_15m_lvl = (_last_label(struct_15m_pts, ("LH", "EQH")) or {}).get("price")
         if sl_5m_lvl is not None and _is_strong_5m_level(sl_5m_lvl, "resistance"):
             sl_anchor = sl_5m_lvl
         elif sl_15m_lvl is not None:

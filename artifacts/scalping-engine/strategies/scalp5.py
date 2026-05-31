@@ -354,8 +354,8 @@ def check(state: dict, debug: bool = False) -> dict | None:
         return None
 
     if direction == "bullish":
-        sl_5m     = _last_label(s5m_struct,  "HL")
-        sl_15m    = _last_label(s15m_struct, "HL")
+        sl_5m     = _last_label(s5m_struct,  "HL") or _last_label(s5m_struct,  "EQL")
+        sl_15m    = _last_label(s15m_struct, "HL") or _last_label(s15m_struct, "EQL")
         sl_anchor = sl_5m if sl_5m is not None else sl_15m
 
         if sl_anchor is None:
@@ -369,8 +369,8 @@ def check(state: dict, debug: bool = False) -> dict | None:
             if debug: print("    [S5] skip: SL not below entry for BUY")
             return None
     else:
-        sl_5m     = _last_label(s5m_struct,  "LH")
-        sl_15m    = _last_label(s15m_struct, "LH")
+        sl_5m     = _last_label(s5m_struct,  "LH") or _last_label(s5m_struct,  "EQH")
+        sl_15m    = _last_label(s15m_struct, "LH") or _last_label(s15m_struct, "EQH")
         sl_anchor = sl_5m if sl_5m is not None else sl_15m
 
         if sl_anchor is None:
