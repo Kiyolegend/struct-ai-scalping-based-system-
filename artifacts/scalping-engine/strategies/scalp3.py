@@ -97,10 +97,10 @@ def detect_order_blocks(candles: list, current_price: float, symbol: str = "") -
                 dist   = abs(center - current_price) / current_price
 
                 if dist <= proximity:
-                    mitigated = any(
-                        float(fc["close"]) < float(c["low"]) - 2 * pip
-                        for fc in candles[i + 1:]
-                    )
+                    ob_mid = (float(c["open"]) + float(c["close"])) / 2
+                    mitigated = any(float(fc["close"]) < ob_mid for fc in candles[i + 1:])
+                        
+                    
                     if not mitigated:
                         results.append({
                             "type": "bullish",
@@ -128,10 +128,10 @@ def detect_order_blocks(candles: list, current_price: float, symbol: str = "") -
                 dist   = abs(center - current_price) / current_price
 
                 if dist <= proximity:
-                    mitigated = any(
-                        float(fc["close"]) > float(c["high"]) + 2 * pip
-                        for fc in candles[i + 1:]
-                    )
+                    ob_mid = (float(c["open"]) + float(c["close"])) / 2
+                    mitigated = any(float(fc["close"]) > ob_mid for fc in candles[i + 1:])
+                        
+                    
                     if not mitigated:
                         results.append({
                             "type": "bearish",
@@ -189,7 +189,7 @@ def detect_fvgs(candles: list, current_price: float, symbol: str = "") -> list:
             center = (b_top + b_bottom) / 2
             dist   = abs(center - current_price) / current_price
             if dist <= proximity:
-                mitigated = any(fc["low"] <= b_bottom for fc in candles[i + 2:])
+                mitigated = any(fc["close"] <= b_bottom for fc in candles[i + 2:])
                 if not mitigated:
                     results.append({
                         "type": "bullish",
@@ -205,7 +205,7 @@ def detect_fvgs(candles: list, current_price: float, symbol: str = "") -> list:
             center = (d_top + d_bottom) / 2
             dist   = abs(center - current_price) / current_price
             if dist <= proximity:
-                mitigated = any(fc["high"] >= d_top for fc in candles[i + 2:])
+                mitigated = any(fc["close"] >= d_top for fc in candles[i + 2:])
                 if not mitigated:
                     results.append({
                         "type": "bearish",

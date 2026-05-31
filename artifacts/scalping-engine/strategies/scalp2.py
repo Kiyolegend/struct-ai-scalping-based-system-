@@ -84,7 +84,7 @@ def _fvg_at_level(candles: list, level: float, direction: str,
             if gap_top > gap_bottom and (gap_top - gap_bottom) >= 3 * pip:
                 center = (gap_top + gap_bottom) / 2
                 if abs(center - level) <= threshold:
-                    mitigated = any(fc["low"] <= gap_bottom for fc in candles[i + 2:])
+                    mitigated = any(fc["close"] <= gap_bottom for fc in candles[i + 2:])
                     if not mitigated:
                         return True
 
@@ -94,7 +94,7 @@ def _fvg_at_level(candles: list, level: float, direction: str,
             if gap_top > gap_bottom and (gap_top - gap_bottom) >= 3 * pip:
                 center = (gap_top + gap_bottom) / 2
                 if abs(center - level) <= threshold:
-                    mitigated = any(fc["high"] >= gap_top for fc in candles[i + 2:])
+                    mitigated = any(fc["close"] >= gap_top for fc in candles[i + 2:])
                     if not mitigated:
                         return True
 
@@ -136,7 +136,8 @@ def _ob4h_at_level(candles_4h: list, level: float, direction: str,
                 if brk and (brk["high"] - brk["low"]) >= 1.5 * avg_rng:
                     center = (c["high"] + c["low"]) / 2
                     if abs(center - level) <= threshold:
-                        if not any(fc["close"] < c["low"] - 3 * pip for fc in candles_4h[i + 1:]):
+                        ob_mid = (c["open"] + c["close"]) / 2
+                        if not any(fc["close"] < ob_mid for fc in candles_4h[i + 1:]):
                             return True
 
         elif direction == "bearish" and c["close"] > c["open"]:
@@ -146,7 +147,8 @@ def _ob4h_at_level(candles_4h: list, level: float, direction: str,
                 if brk and (brk["high"] - brk["low"]) >= 1.5 * avg_rng:
                     center = (c["high"] + c["low"]) / 2
                     if abs(center - level) <= threshold:
-                        if not any(fc["close"] > c["high"] + 3 * pip for fc in candles_4h[i + 1:]):
+                        ob_mid = (c["open"] + c["close"]) / 2
+                        if not any(fc["close"] > ob_mid for fc in candles_4h[i + 1:]):
                             return True
 
     return False
