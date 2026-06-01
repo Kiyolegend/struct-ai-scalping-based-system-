@@ -131,7 +131,7 @@ def is_symbol_blocked(symbol: str, at_ts=None) -> tuple[bool, str]:
     return False, ""
 
 
-def is_safe_to_trade(symbol: str = "") -> tuple[bool, str]:
+def is_safe_to_trade(symbol: str = "", at_ts=None) -> tuple[bool, str]:
     """
     Legacy / convenience entry point — combines global + per-symbol checks.
     Kept for backward compatibility.
@@ -162,7 +162,7 @@ def is_safe_to_trade(symbol: str = "") -> tuple[bool, str]:
     return True, ""
 
 
-def get_upcoming_blocked_days(days: int = 30) -> list[dict]:
+def get_upcoming_blocked_days(days: int = 30, at_ts=None) -> list[dict]:
     """
     Return a list of upcoming blocked dates within the next `days` days.
     Each entry: {date, weekday, event, scope, pairs_blocked}
