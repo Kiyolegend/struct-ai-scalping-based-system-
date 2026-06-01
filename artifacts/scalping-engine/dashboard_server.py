@@ -96,7 +96,7 @@ STATS_FILE    = os.path.join(os.path.dirname(__file__), "session_stats.json")
 
 def _load_session_stats() -> dict:
     """Load today's session stats from disk. Resets to 0 if the saved date is not today."""
-    today = datetime.now(timezone.utc).date()
+    today = (datetime.fromtimestamp(_last_broker_ts, tz=timezone.utc) if _last_broker_ts > 0 else datetime.now(timezone.utc)).date()
     try:
         if os.path.exists(STATS_FILE):
             with open(STATS_FILE, "r") as f:
@@ -262,7 +262,7 @@ def _save_settings() -> None:
 
 
 def _reset_daily_stats_if_needed():
-    today = datetime.now(timezone.utc).date()
+    today = (datetime.fromtimestamp(_last_broker_ts, tz=timezone.utc) if _last_broker_ts > 0 else datetime.now(timezone.utc)).date()
     with stats_lock:
         if session_stats["last_reset_date"] != today:
             session_stats["trades_today"]       = 0

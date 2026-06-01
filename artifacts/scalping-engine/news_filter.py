@@ -87,7 +87,7 @@ def _in_daily_window(now: datetime) -> tuple[bool, str]:
     return False, ""
 
 
-def is_global_blocked() -> tuple[bool, str]:
+def is_global_blocked(at_ts=None) -> tuple[bool, str]:
     """
     Check events that block ALL pairs regardless of symbol:
       — NFP Fridays
@@ -96,7 +96,7 @@ def is_global_blocked() -> tuple[bool, str]:
 
     BoE and ECB are NOT included here — use is_symbol_blocked() for those.
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.fromtimestamp(at_ts, tz=timezone.utc) if at_ts else datetime.now(timezone.utc)
     key = (now.year, now.month, now.day)
 
     if _is_first_friday(now):
@@ -111,7 +111,7 @@ def is_global_blocked() -> tuple[bool, str]:
     return False, ""
 
 
-def is_symbol_blocked(symbol: str) -> tuple[bool, str]:
+def is_symbol_blocked(symbol: str, at_ts=None) -> tuple[bool, str]:
     """
     Check events that only block specific currency pairs:
       — BoE MPC days  → blocks GBP/USD only
@@ -120,7 +120,7 @@ def is_symbol_blocked(symbol: str) -> tuple[bool, str]:
     Returns (True, reason) if this symbol should be skipped right now.
     All other symbols pass through on BoE/ECB days and continue scanning.
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.fromtimestamp(at_ts, tz=timezone.utc) if at_ts else datetime.now(timezone.utc)
     key = (now.year, now.month, now.day)
 
     if key in BOE_DATES and symbol in GBP_PAIRS:
@@ -140,17 +140,19 @@ def is_safe_to_trade(symbol: str = "") -> tuple[bool, str]:
       is_global_blocked()    once per cycle
       is_symbol_blocked(sym) once per symbol inside the scan loop
     """
-    blocked, reason = is_global_blocked()
+    blocked, reason = is_global_blocked(at_ts=at_ts)
+
+
     if blocked:
         return False, reason
 
     if symbol:
-        blocked, reason = is_symbol_blocked(symbol)
+        blocked, reason = is_symbol_blocked(symbol, at_ts=at_ts)
         if blocked:
             return False, reason
     else:
         # No symbol provided — conservative fallback: block all on BoE/ECB days
-        now = datetime.now(timezone.utc)
+        now = datetime.fromtimestamp(at_ts, tz=timezone.utc) if at_ts else datetime.now(timezone.utc)
         key = (now.year, now.month, now.day)
         if key in BOE_DATES:
             return False, "BoE MPC decision day — ALL pairs blocked (GBP pairs extremely volatile, rest of market erratic)"
@@ -168,7 +170,7 @@ def get_upcoming_blocked_days(days: int = 30) -> list[dict]:
     Used by the /api/news/upcoming dashboard endpoint.
     Daily recurring windows are excluded (they apply every day by definition).
     """
-    now    = datetime.now(timezone.utc)
+    now    = datetime.fromtimestamp(at_ts, tz=timezone.utc) if at_ts else datetime.now(timezone.utc)
     result = []
 
     for offset in range(days + 1):
