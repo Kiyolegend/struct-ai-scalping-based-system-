@@ -635,8 +635,8 @@ def _auto_mark_result(tid: str, result: str) -> None:
                 _save_journal(entries)
                 if result in ("W", "L"):
                   trade_date = e.get("date", "")
-                today_str  = _broker_now_utc().strftime("%Y-%m-%d")
-                if trade_date == today_str:
+                  today_str  = _broker_now_utc().strftime("%Y-%m-%d")
+                  if trade_date == today_str:
                     with stats_lock:
                         if result == "L":
                            session_stats["consecutive_losses"] += 1
