@@ -169,6 +169,7 @@ def has_open_position(symbol: str) -> bool:
         positions  = mt5.positions_get(symbol=mt5_symbol)
         if positions is None:
             return False
-        return len(positions) > 0
+        return any(p.magic == 202401 for p in positions)
+
     finally:
         mt5.shutdown()
