@@ -658,7 +658,8 @@ def _outcome_watcher() -> None:
                        if e.get("result") is None and e.get("auto_monitor")]
             if not pending:
                 continue
-            now_utc = datetime.now(timezone.utc)
+            now_utc = (datetime.fromtimestamp(_last_broker_ts, tz=timezone.utc)
+                         if _last_broker_ts > 0 else datetime.now(timezone.utc))
             today_str = now_utc.strftime("%Y-%m-%d")
             for entry in pending:
                 sym       = entry.get("symbol", "")
@@ -935,7 +936,8 @@ def get_journal():
     with journal_lock:
         entries = _load_journal()
 
-    today   = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    today   = (datetime.fromtimestamp(_last_broker_ts, tz=timezone.utc)
+                 if _last_broker_ts > 0 else datetime.now(timezone.utc)).strftime("%Y-%m-%d")
     marked  = [e for e in entries if e.get("result") in ("W", "L")]
     wins    = [e for e in marked if e["result"] == "W"]
     losses  = [e for e in marked if e["result"] == "L"]
@@ -1069,7 +1071,8 @@ def api_news_upcoming():
 
     upcoming = get_upcoming_blocked_days(days=days)
 
-    today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    today_str = (datetime.fromtimestamp(_last_broker_ts, tz=timezone.utc)
+                   if _last_broker_ts > 0 else datetime.now(timezone.utc)).strftime("%Y-%m-%d")
     today_events = [e for e in upcoming if e["date"] == today_str]
     future_events = [e for e in upcoming if e["date"] > today_str]
 
