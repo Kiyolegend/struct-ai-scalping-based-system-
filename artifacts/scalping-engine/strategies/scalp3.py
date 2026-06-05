@@ -477,7 +477,10 @@ def check(state: dict, debug: bool = False) -> dict | None:
         print(f"    [S3] REJECTED: SL too tight ({sl_dist/pip:.1f}p < {config.MIN_SL_PIPS})")
         return None
 
-    tp    = (price + sl_dist * config.TARGET_RR) if direction == "bullish" else (price - sl_dist * config.TARGET_RR)
+    _fib = config.fib_extension_tp(state, direction, price)
+    tp   = _fib if _fib is not None else (
+               (price + sl_dist * config.TARGET_RR) if direction == "bullish"
+               else (price - sl_dist * config.TARGET_RR))
     rr    = round(config.TARGET_RR, 2)
     sl    = round(sl, 5)
     tp    = round(tp, 5)

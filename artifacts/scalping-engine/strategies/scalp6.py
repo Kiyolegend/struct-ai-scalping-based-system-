@@ -454,8 +454,10 @@ def check(state: dict, debug: bool = False) -> dict | None:
             print(f"    [S6] REJECTED: SL too tight ({sl_dist/pip:.1f}p < {config.MIN_SL_PIPS}p min)")
         return None
 
-    tp = (price + sl_dist * config.TARGET_RR if direction == "bullish"
-          else price - sl_dist * config.TARGET_RR)
+    _fib = config.fib_extension_tp(state, htf_direction, price)
+    tp   = _fib if _fib is not None else (
+               (price + sl_dist * config.TARGET_RR) if htf_direction == "bullish"
+               else (price - sl_dist * config.TARGET_RR))
 
     total_cost_pips = config.get_total_cost_pips(symbol)
     spread_pips     = config.get_spread_pips(symbol)   # kept for logging

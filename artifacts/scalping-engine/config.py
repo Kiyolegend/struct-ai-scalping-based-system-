@@ -119,3 +119,19 @@ SWEEP_SL_BUFFER_PIPS = 8
 # Minimum pips price must have recovered beyond the sweep level before entry is valid.
 # Filters dead-cat bounces where the recovery is only 1-2 ticks.
 MIN_SWEEP_RECOVERY_PIPS = 5
+
+
+def fib_extension_tp(state: dict, direction: str, entry: float) -> float | None:
+    """127.2% Fibonacci extension TP. Returns None if swing data missing — caller falls back to 2R."""
+    try:
+        hi = (state.get("4h") or {}).get("swing_hi")
+        lo = (state.get("4h") or {}).get("swing_lo")
+        if not hi or not lo or hi <= lo:
+            return None
+        rng = hi - lo
+        tp  = (hi + 0.272 * rng) if direction == "bullish" else (lo - 0.272 * rng)
+        if direction == "bullish" and tp <= entry: return None
+        if direction == "bearish" and tp >= entry: return None
+        return round(tp, 5)
+    except Exception:
+        return None

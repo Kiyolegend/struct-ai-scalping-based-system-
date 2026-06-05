@@ -109,11 +109,18 @@ def _in_daily_window(now: datetime) -> tuple[bool, str]:
     return False, ""
 
 
-def  _static_global_blocked(reference_ts: float | None = None) -> tuple[bool, str]:
+def _static_global_blocked(reference_ts: float | None = None) -> tuple[bool, str]:
     now = (datetime.fromtimestamp(reference_ts, tz=timezone.utc) if reference_ts else datetime.now(timezone.utc))
     key = (now.year, now.month, now.day)
     if _is_first_friday(now):
-        return True, "NFP Friday — US Non-Farm Payrolls — no trading all day"
+        # Only block the real danger window — not all day
+        # NFP prints at 12:30 UTC → block 45 min before to 2 hours after
+        now_mins        = now.hour * 60 + now.minute
+        nfp_block_start = 11 * 60 + 45   # 11:45 UTC
+        nfp_block_end   = 14 * 60 + 30   # 14:30 UTC
+        if nfp_block_start <= now_mins < nfp_block_end:
+            return True, "NFP Friday — danger window 11:45–14:30 UTC"
+        # Outside that window → fall through, trade normally
     if key in FED_DATES:
         return True, "Fed rate decision day — no trading all day"
     blocked, reason = _in_daily_window(now)

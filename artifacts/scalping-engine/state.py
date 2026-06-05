@@ -101,6 +101,8 @@ def sanitize_state(state: dict) -> dict | None:
             "zones":     tf_data.get("zones") if isinstance(tf_data.get("zones"), list) else [],
             "candles":   tf_data.get("candles")    or [],
             "sr_levels": tf_data.get("sr_levels")  or [],
+            "swing_hi":  tf_data.get("swing_hi"),
+            "swing_lo":  tf_data.get("swing_lo"),
         }
 
     asia = state.get("asia_range") or {}
@@ -222,6 +224,8 @@ def build_state(symbol: str = None) -> dict | None:
             "choch":     a4h.get("choch", []),
             "zones":     a4h.get("zones", []),
             "candles":   a4h.get("candles", []),
+            "swing_hi":  a4h.get("trend", {}).get("last_high_price"),
+            "swing_lo":  a4h.get("trend", {}).get("last_low_price"),
         },
         "sr_levels": sr.get("levels", []),
         "asia_range": {"high": asia_high, "low": asia_low},
