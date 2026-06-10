@@ -194,7 +194,7 @@ def is_symbol_blocked(symbol: str, reference_ts: float | None = None) -> tuple[b
         return False, ""
 
     # Live service unreachable — fall back to static
-    return _static_symbol_blocked(symbol)
+    return _static_symbol_blocked(symbol, reference_ts=reference_ts)
 
 
 def get_pair_confidence_penalty(symbol: str, reference_ts: float | None = None) -> int:

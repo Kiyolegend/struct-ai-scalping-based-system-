@@ -528,7 +528,7 @@ def run_engine_cycle():
         if success and approved_decision.get("strategy") == "Asian Range Boundary Reaction":
                 from strategies.scalp6 import _mark_fired as _s6_mark_fired
                 _s6_mark_fired(
-                approved_decision.get("symbol", ""),approved_decision.get("boundary_side", "")
+                approved_decision.get("symbol", ""),approved_decision.get("boundary_side", ""),reference_ts=best_state.get("reference_ts")
             )
 
 
