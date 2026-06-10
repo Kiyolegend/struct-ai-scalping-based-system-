@@ -148,15 +148,13 @@ def is_global_blocked(reference_ts: float | None = None) -> tuple[bool, str]:
     """
     Check if ALL pairs should be blocked right now.
 
-    Tries the live service first. Falls back to static calendar.
-    The live service is queried on USD/JPY as a representative US-event proxy
-    for the global check — if there's a US market-stopping event (NFP, Fed),
-    USD/JPY will be blocked and we surface that as a global block.
+    Fed days and NFP Fridays always block — no live service needed.
+    Daily data windows only block when live service is unreachable.
     """
-    # First, always check the static calendar for absolute certainty
-    # on the highest-stakes events (NFP day, Fed day) — these never
-    # require a live service call to verify.
-    static_blocked, static_reason = _static_global_blocked(reference_ts)
+    # Fed days and NFP always block — live service cannot override these.
+    hard_blocked, hard_reason = _static_hard_dates(reference_ts)
+    if hard_blocked:
+        return True, f"[STATIC] {hard_reason}"
 
     # Query live service for USD/JPY as a global US-event proxy
     live_data = _get_pair_impact("USD/JPY", at_ts=reference_ts)
@@ -165,16 +163,11 @@ def is_global_blocked(reference_ts: float | None = None) -> tuple[bool, str]:
         if live_data.get("blocked"):
             reason = live_data.get("reason", "High-impact event — no trading")
             return True, f"[LIVE] {reason}"
-
-        # Even if live says not blocked, trust static for known critical dates
-        if static_blocked:
-            return True, f"[STATIC] {static_reason}"
-
         return False, ""
 
-    # Live service unreachable — fall back to static
-    return static_blocked, (f"[STATIC] {static_reason}" if static_blocked else "")
-
+    # Live service unreachable — daily windows apply as fallback only
+    window_blocked, window_reason = _static_window_blocked(reference_ts)
+    return window_blocked, (f"[STATIC] {window_reason}" if window_blocked else "")
 
 def is_symbol_blocked(symbol: str, reference_ts: float | None = None) -> tuple[bool, str]:
     """
