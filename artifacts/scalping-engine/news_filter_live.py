@@ -43,8 +43,14 @@ def _get_pair_impact(pair: str, at_ts: float | None = None) -> dict | None:
             timeout=SERVICE_TIMEOUT,
         )
         r.raise_for_status()
-        _SERVICE_WARN_PRINTED = False   # reset warning state if service recovers
-        return r.json()
+        data = r.json()
+        if not data.get("data_loaded", True):
+            if not _SERVICE_WARN_PRINTED:
+                print("  [NEWS-LIVE] Service running but no calendar data loaded yet — falling back to static")
+                _SERVICE_WARN_PRINTED = True
+            return None
+        _SERVICE_WARN_PRINTED = False
+        return data
     except Exception as e:
         if not _SERVICE_WARN_PRINTED:
             print(f"  [NEWS-LIVE] Service unreachable ({e}) — falling back to static calendar")
