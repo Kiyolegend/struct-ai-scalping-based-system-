@@ -277,7 +277,7 @@ def _score_all_strategies(state: dict) -> list:
     scores = []
     for name, strategy_fn in STRATEGIES:
         try:
-            result = strategy_fn(state, debug=False)
+            result = strategy_fn(state, debug=True)
             if result:
                 scores.append({
                     "name":      result.get("strategy", name),
