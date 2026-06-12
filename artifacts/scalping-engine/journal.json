@@ -1,1 +1,25 @@
-[]
+[
+  {
+    "id": "835f8f32",
+    "timestamp": "2026-06-12 08:00 UTC",
+    "date": "2026-06-12",
+    "mode": "SIM",
+    "symbol": "USD/JPY",
+    "direction": "SELL",
+    "strategy": "Liquidity Sweep Reversal Scalping",
+    "confidence": 115,
+    "entry": 160.231,
+    "sl": 160.427,
+    "tp": 159.24822,
+    "sl_pips": 19.6,
+    "tp_pips": 98.3,
+    "rr": 5.02,
+    "lot": 0.02,
+    "pnl_win": 12.27,
+    "pnl_loss": -2.45,
+    "result": null,
+    "pnl": null,
+    "reason": "15M sweep=bearish(CHoCH) @ 160.30100 age=2.2h | 5M confirm=CHoCH | mkt=range | dist=7.0p prec=10pts | zone=\u2713 fresh=\u2713 +FVG | sess=['asian', 'london'] | spread=1.0p+comm=1.0p=cost=2.0p netRR=4.46 score=115/145",
+    "auto_monitor": true
+  }
+]

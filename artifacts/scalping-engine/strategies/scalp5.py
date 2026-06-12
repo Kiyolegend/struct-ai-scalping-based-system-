@@ -245,7 +245,8 @@ def check(state: dict, debug: bool = False) -> dict | None:
     candles_5m = s5m.get("candles", [])
 
     # ── Step 1: Session open window gate ──────────────────────────────────
-    in_window, window_name = _in_session_open_window(reference_ts=state.get("reference_ts"))
+    broker_ts = config.get_broker_ts(state)
+    in_window, window_name = _in_session_open_window(reference_ts=broker_ts)
 
     if not in_window:
         if debug: print("    [S5] skip: not in London/NY open window (first 90 min of each session open)")
@@ -289,7 +290,7 @@ def check(state: dict, debug: bool = False) -> dict | None:
               f"bias={bias_score} align_bonus={alignment_bonus}")
 
     # ── Step 4: Counter CHoCH guard on 15M ───────────────────────────────
-    now_sec           = int(state.get("reference_ts") or _time.time())
+    now_sec           = broker_ts
     choch_15m         = s15m.get("choch", [])
     counter_direction = "bearish" if direction == "bullish" else "bullish"
 

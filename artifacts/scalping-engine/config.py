@@ -1,4 +1,5 @@
-﻿STRUCT_API_BASE = "http://localhost:8001/trading-api"
+﻿import time as _time
+STRUCT_API_BASE = "http://localhost:8001/trading-api"
 
 # ── Active symbol (change this to switch which pair the engine scans) ─────────
 SYMBOL = "USD/JPY"
@@ -119,6 +120,25 @@ SWEEP_SL_BUFFER_PIPS = 8
 # Minimum pips price must have recovered beyond the sweep level before entry is valid.
 # Filters dead-cat bounces where the recovery is only 1-2 ticks.
 MIN_SWEEP_RECOVERY_PIPS = 5
+
+
+def get_broker_ts(state: dict) -> int:
+    try:
+        candles = (state.get("5m") or {}).get("candles") or []
+        if candles:
+            t = int(candles[-1]["time"])
+            if t > 1_000_000_000:
+                return t
+    except Exception:
+        pass
+    try:
+        import ntplib as _ntplib
+        c = _ntplib.NTPClient()
+        r = c.request("pool.ntp.org", version=3, timeout=2)
+        return int(r.tx_time)
+    except Exception:
+        pass
+    return int(_time.time())
 
 
 def fib_extension_tp(state: dict, direction: str, entry: float) -> float | None:

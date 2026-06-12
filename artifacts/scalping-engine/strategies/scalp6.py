@@ -280,10 +280,10 @@ def check(state: dict, debug: bool = False) -> dict | None:
 
     symbol  = state.get("symbol", "")
     pip     = config.get_symbol_cfg(symbol)["pip_size"]
-    now_sec = int(state.get("reference_ts") or _time.time())
+    broker_ts = config.get_broker_ts(state)
+    now_sec   = broker_ts
 
-    # ── Gate 1: Asian session window ─────────────────────────────────────
-    if not _in_asian_session(reference_ts=state.get("reference_ts")):
+    if not _in_asian_session(reference_ts=broker_ts):
         if debug: print("    [S6] skip: outside Asian session (00:00–09:00 UTC)")
         return None
 
@@ -312,7 +312,7 @@ def check(state: dict, debug: bool = False) -> dict | None:
         return None
 
     # ── Gate 4: Session cooldown ──────────────────────────────────────────
-    if _already_fired(symbol, boundary_side, reference_ts=state.get("reference_ts")):
+    if _already_fired(symbol, boundary_side, reference_ts=broker_ts):
         if debug:
             print(f"    [S6] skip: already fired on {symbol} Asian {boundary_side} today "
                   f"— cooldown active until midnight UTC")
@@ -488,7 +488,7 @@ def check(state: dict, debug: bool = False) -> dict | None:
         f"score={total_score}/140"
     )
 
-    _mark_fired(symbol, boundary_side, reference_ts=state.get("reference_ts"))
+    _mark_fired(symbol, boundary_side, reference_ts=broker_ts)
 
     return {
         "trade":       True,

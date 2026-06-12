@@ -378,7 +378,7 @@ def check(state: dict, debug: bool = False) -> dict | None:
         return None
 
     sym_cfg = config.get_symbol_cfg(state.get("symbol"))
-    now_sec = int(state.get("reference_ts") or _time.time())
+    now_sec = config.get_broker_ts(state)
     pip     = sym_cfg["pip_size"]
 
     # ── Step 1: Session gate — London or NY only ──────────────────────────

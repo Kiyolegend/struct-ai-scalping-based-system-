@@ -189,7 +189,7 @@ def check(state: dict, debug: bool = False) -> dict | None:
     if not price or not isinstance(price, (int, float)) or not math.isfinite(price):
         return None
 
-    now_sec = int(state.get("reference_ts") or _time.time())
+    now_sec = config.get_broker_ts(state)
 
     # ── Step 1: Market condition — avoid strong trends ────────────────────
     b4h = bias.get("4h", "neutral")

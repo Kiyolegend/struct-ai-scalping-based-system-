@@ -302,7 +302,7 @@ def check(state: dict, debug: bool = False) -> dict | None:
     trade_type = "BUY" if direction == "bullish" else "SELL"
     symbol     = state.get("symbol", "")
     pip        = config.get_symbol_cfg(symbol)["pip_size"]
-    now_sec = int(state.get("reference_ts") or _time.time())
+    now_sec = config.get_broker_ts(state)
 
     # ── Step 2: 1H unmitigated OB in bias direction (within 48h) ─────────
     obs_1h = [
