@@ -488,6 +488,8 @@ def check(state: dict, debug: bool = False) -> dict | None:
         f"score={total_score}/140"
     )
 
+    _mark_fired(symbol, boundary_side, reference_ts=state.get("reference_ts"))
+
     return {
         "trade":       True,
         "type":        trade_type,

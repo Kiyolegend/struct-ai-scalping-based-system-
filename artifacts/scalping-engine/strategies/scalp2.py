@@ -220,9 +220,7 @@ def check(state: dict, debug: bool = False) -> dict | None:
 
     def _pick(choch_item, bos_item):
         if choch_item and bos_item:
-            
-                
-            return choch_item
+           return choch_item if choch_item.get("time", 0) >= bos_item.get("time", 0) else bos_item
         return choch_item or bos_item
 
     buy_sweep_item  = _pick(bearish_choch, bearish_bos)
