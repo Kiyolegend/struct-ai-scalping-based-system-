@@ -76,6 +76,7 @@
     .clock-pc   { font-family:monospace; color:var(--muted); }
     .clock-sep  { color:var(--border); }
     .clock-gap  { color:var(--orange); font-weight:600; }
+    .clock-source.broker-stale { color:var(--red); }
 
     /* ── Controls ─────────────────────────────────────── */
     .controls {
@@ -1221,13 +1222,23 @@
         const src = document.getElementById('clockSource');
         document.getElementById('clockBroker').textContent = ck.broker_time || '—';
         document.getElementById('clockPc').textContent     = ck.pc_time     || '—';
-        if (ck.using_broker) {
-          const gapH = Math.floor((ck.gap_secs || 0) / 3600);
-          const gapM = Math.round(((ck.gap_secs || 0) % 3600) / 60);
-          src.textContent = '🕐 BROKER TIME';
-          src.className   = 'clock-source broker-ok';
-          document.getElementById('clockGap').textContent =
-            ck.gap_secs > 120 ? `  │  PC offset: ${gapH}h ${gapM}m` : '';
+                if (ck.using_broker) {
+          const age      = ck.broker_age || 0;
+          const stale    = age > 180;                      // stale after 3 minutes
+          const gapH     = Math.floor((ck.gap_secs || 0) / 3600);
+          const gapM     = Math.round(((ck.gap_secs || 0) % 3600) / 60);
+          const ageMin   = Math.floor(age / 60);
+          const ageSec   = age % 60;
+          if (stale) {
+            src.textContent = `⛔ BROKER STALE — last data ${ageMin}m ${ageSec}s ago`;
+            src.className   = 'clock-source broker-stale';
+            document.getElementById('clockGap').textContent = '  │  Engine running on old timestamp';
+          } else {
+            src.textContent = '🕐 BROKER TIME';
+            src.className   = 'clock-source broker-ok';
+            document.getElementById('clockGap').textContent =
+              ck.gap_secs > 120 ? `  │  PC offset: ${gapH}h ${gapM}m` : '';
+          }
         } else {
           src.textContent = '⚠ PC CLOCK FALLBACK';
           src.className   = 'clock-source broker-pc';
