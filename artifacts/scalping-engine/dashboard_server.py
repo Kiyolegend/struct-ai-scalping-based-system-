@@ -95,21 +95,41 @@ STATS_FILE    = os.path.join(os.path.dirname(__file__), "session_stats.json")
 
 
 def _load_session_stats() -> dict:
-    """Load today's session stats from disk. Resets to 0 if the saved date is not today."""
-    today = (datetime.fromtimestamp(_last_broker_ts, tz=timezone.utc) if _last_broker_ts > 0 else datetime.now(timezone.utc)).date()
+    """Load today's session stats from disk. Resets to 0 if the saved date is not today.
+
+    At startup _last_broker_ts is 0 so we cannot trust the PC clock to compute
+    'today'.  In that case we load whatever is saved unconditionally — the first
+    call to _reset_daily_stats_if_needed() (which runs at the top of every scan
+    cycle and *does* have broker time) will reset the counter if the date has
+    changed.
+    """
     try:
         if os.path.exists(STATS_FILE):
             with open(STATS_FILE, "r") as f:
                 data = json.load(f)
-            if data.get("last_reset_date") == str(today):
+            if _last_broker_ts > 0:
+                today = datetime.fromtimestamp(_last_broker_ts, tz=timezone.utc).date()
+                if data.get("last_reset_date") == str(today):
+                    return {
+                        "trades_today":       int(data.get("trades_today", 0)),
+                        "consecutive_losses": int(data.get("consecutive_losses", 0)),
+                        "last_reset_date":    today,
+                    }
+            else:
+                # No broker time yet — load saved data as-is; the scan loop
+                # will reset counters via _reset_daily_stats_if_needed() once
+                # broker time arrives.
+                saved_date = data.get("last_reset_date", "")
                 return {
                     "trades_today":       int(data.get("trades_today", 0)),
                     "consecutive_losses": int(data.get("consecutive_losses", 0)),
-                    "last_reset_date":    today,
+                    "last_reset_date":    saved_date,
                 }
     except Exception:
         pass
-    return {"trades_today": 0, "consecutive_losses": 0, "last_reset_date": today}
+    fallback_date = (datetime.fromtimestamp(_last_broker_ts, tz=timezone.utc).date()
+                     if _last_broker_ts > 0 else datetime.now(timezone.utc).date())
+    return {"trades_today": 0, "consecutive_losses": 0, "last_reset_date": fallback_date}
 
 
 def _save_session_stats() -> None:
@@ -523,7 +543,7 @@ def run_engine_cycle():
         lot        = get_lot_size()
         success    = sim_order(approved_decision, lot) if use_sim else live_order(approved_decision, lot)
         mode_label = "SIM" if use_sim else "LIVE"
-        log_trade(approved_decision, executed=success, mode=mode_label)
+        log_trade(approved_decision, executed=success, mode=mode_label, broker_ts=_last_broker_ts or None)
         
         if success and approved_decision.get("strategy") == "Asian Range Boundary Reaction":
                 from strategies.scalp6 import _mark_fired as _s6_mark_fired

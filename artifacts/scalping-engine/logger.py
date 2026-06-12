@@ -10,12 +10,16 @@ LOG_DIR = os.path.join(os.path.dirname(__file__), "logs")
 os.makedirs(LOG_DIR, exist_ok=True)
 
 
-def _timestamp() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+def _timestamp(broker_ts: float | None = None) -> str:
+    dt = (datetime.fromtimestamp(broker_ts, tz=timezone.utc)
+          if broker_ts else datetime.now(timezone.utc))
+    return dt.strftime("%Y-%m-%d %H:%M:%S UTC")
 
 
-def _logfile() -> str:
-    date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+def _logfile(broker_ts: float | None = None) -> str:
+    dt = (datetime.fromtimestamp(broker_ts, tz=timezone.utc)
+          if broker_ts else datetime.now(timezone.utc))
+    date = dt.strftime("%Y-%m-%d")
     return os.path.join(LOG_DIR, f"trades_{date}.jsonl")
 
 
@@ -44,15 +48,15 @@ def log_scan(state: dict, decision: dict | None):
     print()
 
 
-def log_trade(decision: dict, executed: bool, mode: str = "SIMULATION"):
+def log_trade(decision: dict, executed: bool, mode: str = "SIMULATION", broker_ts: float | None = None):
     """Persist a trade decision to the daily log file."""
     entry = {
-        "timestamp": _timestamp(),
+        "timestamp": _timestamp(broker_ts),
         "mode": mode,
         "executed": executed,
         **decision,
     }
-    with open(_logfile(), "a", encoding="utf-8") as f:
+    with open(_logfile(broker_ts), "a", encoding="utf-8") as f:
         f.write(json.dumps(entry) + "\n")
 
 
