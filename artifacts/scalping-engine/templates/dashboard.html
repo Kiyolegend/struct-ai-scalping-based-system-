@@ -68,6 +68,15 @@
     .price-value { font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; }
     .price-label { font-size: 11px; color: var(--muted); }
 
+        .clock-bar { background:var(--surface); border-bottom:1px solid var(--border); padding:5px 24px; display:flex; align-items:center; gap:10px; font-size:11px; font-variant-numeric:tabular-nums; }
+    .clock-source { font-weight:700; letter-spacing:.5px; }
+    .clock-source.broker-ok { color:var(--green); }
+    .clock-source.broker-pc { color:var(--yellow); }
+    .clock-time { font-family:monospace; color:var(--text); }
+    .clock-pc   { font-family:monospace; color:var(--muted); }
+    .clock-sep  { color:var(--border); }
+    .clock-gap  { color:var(--orange); font-weight:600; }
+
     /* ── Controls ─────────────────────────────────────── */
     .controls {
       display: flex; align-items: center; gap: 8px;
@@ -576,6 +585,16 @@
     <div class="price-label">USD/JPY</div>
   </div>
 </header>
+<div class="clock-bar">
+  <span class="clock-source broker-pc" id="clockSource">⏳ Waiting for broker…</span>
+  <span class="clock-sep">│</span>
+  <span style="color:var(--muted)">Broker:</span>
+  <span class="clock-time" id="clockBroker">—</span>
+  <span class="clock-sep">│</span>
+  <span style="color:var(--muted)">PC:</span>
+  <span class="clock-pc" id="clockPc">—</span>
+  <span class="clock-gap" id="clockGap"></span>
+</div>
 
 <div class="tab-nav">
   <button class="tab-btn active" id="tabBtnDashboard" onclick="switchTab('dashboard')">⚡ Dashboard</button>
@@ -1198,6 +1217,22 @@
           <span style="font-size:11px;">${statusText}</span>`;
                      
         document.getElementById('lastBlock').textContent = d.last_block || '—';
+                const ck = d.clock || {};
+        const src = document.getElementById('clockSource');
+        document.getElementById('clockBroker').textContent = ck.broker_time || '—';
+        document.getElementById('clockPc').textContent     = ck.pc_time     || '—';
+        if (ck.using_broker) {
+          const gapH = Math.floor((ck.gap_secs || 0) / 3600);
+          const gapM = Math.round(((ck.gap_secs || 0) % 3600) / 60);
+          src.textContent = '🕐 BROKER TIME';
+          src.className   = 'clock-source broker-ok';
+          document.getElementById('clockGap').textContent =
+            ck.gap_secs > 120 ? `  │  PC offset: ${gapH}h ${gapM}m` : '';
+        } else {
+          src.textContent = '⚠ PC CLOCK FALLBACK';
+          src.className   = 'clock-source broker-pc';
+          document.getElementById('clockGap').textContent = '';
+        }
 
         // News block banner
         const nb     = document.getElementById('newsBlockBanner');

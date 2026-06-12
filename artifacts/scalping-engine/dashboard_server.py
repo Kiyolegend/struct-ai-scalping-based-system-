@@ -797,9 +797,20 @@ def heatmap():
 
 @app.route("/api/status")
 def api_status():
+    pc_now       = datetime.now(timezone.utc)
+    using_broker = _last_broker_ts > 0
+    broker_dt    = datetime.fromtimestamp(_last_broker_ts, tz=timezone.utc) if using_broker else pc_now
+    gap_secs     = int(abs((broker_dt - pc_now).total_seconds()))
     with state_lock:
-        return jsonify(engine_state)
-
+        data = dict(engine_state)
+    data["clock"] = {
+        "broker_time":  broker_dt.strftime("%Y-%m-%d %H:%M:%S UTC"),
+        "pc_time":      pc_now.strftime("%Y-%m-%d %H:%M:%S UTC"),
+        "gap_secs":     gap_secs,
+        "using_broker": using_broker,
+        "broker_age":   int(time.time() - _last_broker_ts) if using_broker else None,
+    }
+    return jsonify(data)
 
 @app.route("/api/mode/<mode>", methods=["POST"])
 def set_mode(mode):
