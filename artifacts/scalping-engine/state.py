@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 import config
 from config import STRUCT_API_BASE
 from zoneinfo import ZoneInfo
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 TIMEOUT = 12
 
@@ -134,12 +135,22 @@ def build_state(symbol: str = None) -> dict | None:
     sym = symbol or config.SYMBOL
     print(f"  Fetching {sym} from STRUCT.ai...", end=" ", flush=True)
 
-    bias = _get("mtf-bias", {"symbol": sym})
-    a5m  = _analysis("5m",  300, sym)
-    a15m = _analysis("15m", 150, sym)
-    a1h  = _analysis("1h",  150, sym)
-    a4h  = _analysis("4h",  100, sym)
-    sr   = _get("sr-levels", {"symbol": sym, "outputsize": 300})
+    
+
+    with ThreadPoolExecutor(max_workers=6) as ex:
+        f_bias = ex.submit(_get, "mtf-bias",   {"symbol": sym})
+        f_5m   = ex.submit(_analysis, "5m",  300, sym)
+        f_15m  = ex.submit(_analysis, "15m", 150, sym)
+        f_1h   = ex.submit(_analysis, "1h",  150, sym)
+        f_4h   = ex.submit(_analysis, "4h",  100, sym)
+        f_sr   = ex.submit(_get, "sr-levels", {"symbol": sym, "outputsize": 300})
+
+        bias = f_bias.result()
+        a5m  = f_5m.result()
+        a15m = f_15m.result()
+        a1h  = f_1h.result()
+        a4h  = f_4h.result()
+        sr   = f_sr.result()
 
     if not all([bias, a5m, a15m, a1h, a4h, sr]):
         print("FAILED")
