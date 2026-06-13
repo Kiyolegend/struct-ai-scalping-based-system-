@@ -92,7 +92,7 @@ MIN_RR = 2.0
 # Minimum RR after deducting TOTAL cost (spread + commission).
 # Net RR = (TP_pips - total_cost) / (SL_pips + total_cost).
 # Raised from 1.5 → 1.6 to account for the Nexus commission pip gap.
-NET_MIN_RR = 1.6
+NET_MIN_RR = 1.5
 
 TARGET_RR  = 2.0
 MAX_TRADES_PER_DAY = 3

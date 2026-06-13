@@ -171,9 +171,9 @@ def is_global_blocked(reference_ts: float | None = None) -> tuple[bool, str]:
             return True, f"[LIVE] {reason}"
         return False, ""
 
-    # Live service unreachable — daily windows apply as fallback only
-    window_blocked, window_reason = _static_window_blocked(reference_ts)
-    return window_blocked, (f"[STATIC] {window_reason}" if window_blocked else "")
+        # Live service unreachable — only Fed/NFP hard dates block (above).
+    # Daily windows not applied as fallback — they block London/NY open every day.
+    return False, ""
 
 def is_symbol_blocked(symbol: str, reference_ts: float | None = None) -> tuple[bool, str]:
     """
