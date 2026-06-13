@@ -86,7 +86,7 @@ def place_order(decision: dict, lot: float) -> int:
         # ── Resolve the correct MT5 symbol for this signal ────────────────
         signal_sym = decision.get("symbol", config.SYMBOL)
         sym_cfg    = config.get_symbol_cfg(signal_sym)
-        mt5_symbol = sym_cfg["mt5_name"]   # e.g. "USDJPY", "EURUSD", "GBPJPY"
+
 
         trade_type = mt5.ORDER_TYPE_BUY if decision["type"] == "BUY" else mt5.ORDER_TYPE_SELL
         price_info = mt5.symbol_info_tick(mt5_symbol)
@@ -157,11 +157,11 @@ def has_open_position(symbol: str) -> bool:
     try:
         import MetaTrader5 as mt5
     except ImportError:
-        return false
+        return False
 
     mt5_inst = _connect()
     if mt5_inst is None:
-        return false
+        return False
 
     try:
         sym_cfg    = config.get_symbol_cfg(symbol)
