@@ -17,9 +17,9 @@
     "lot": 0.02,
     "pnl_win": 12.27,
     "pnl_loss": -2.45,
-    "result": null,
+    "result": "?",
     "pnl": null,
     "reason": "15M sweep=bearish(CHoCH) @ 160.30100 age=2.2h | 5M confirm=CHoCH | mkt=range | dist=7.0p prec=10pts | zone=\u2713 fresh=\u2713 +FVG | sess=['asian', 'london'] | spread=1.0p+comm=1.0p=cost=2.0p netRR=4.46 score=115/145",
-    "auto_monitor": true
+    "auto_monitor": false
   }
 ]
