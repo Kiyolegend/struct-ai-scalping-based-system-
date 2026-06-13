@@ -84,6 +84,8 @@ engine_state = {
     "default_lot":   config.DEFAULT_LOT,
     "occupied_symbols": [],
 }
+_breakeven_tracker: dict[int, dict] = {}
+_scan_times = []
 _scan_times = []
 state_lock = threading.Lock()
 _last_broker_ts: float = 0.0   # updated every scan with broker candle time
@@ -541,7 +543,10 @@ def run_engine_cycle():
 
         use_sim    = config.SIMULATION_MODE or SIM_FORCE or not MT5_AVAILABLE
         lot        = get_lot_size()
-        success    = sim_order(approved_decision, lot) if use_sim else live_order(approved_decision, lot)
+        order_result = sim_order(approved_decision, lot) if use_sim else live_order(approved_decision, lot)
+        success      = bool(order_result)
+        filled_ticket = (order_result if (not use_sim and isinstance(order_result, int)
+                         and not isinstance(order_result, bool) and order_result > 0) else None)
         mode_label = "SIM" if use_sim else "LIVE"
         log_trade(approved_decision, executed=success, mode=mode_label, broker_ts=_last_broker_ts or None)
         
@@ -553,6 +558,15 @@ def run_engine_cycle():
 
 
         if success:
+            if filled_ticket and not use_sim:
+                    _breakeven_tracker[filled_ticket] = {
+                    "direction":  approved_decision.get("type"),
+                    "entry":      approved_decision.get("entry"),
+                    "sl_orig":    approved_decision.get("sl"),
+                    "tp":         approved_decision.get("tp"),
+                    "mt5_symbol": config.get_symbol_cfg(approved_decision.get("symbol", config.SYMBOL))["mt5_name"],
+                    "moved":      False,
+                }
             with stats_lock:
                 session_stats["trades_today"] += 1
                 _save_session_stats()
@@ -617,6 +631,9 @@ def engine_loop():
         try:
             _t0 = time.time()
             run_engine_cycle()
+            if MT5_AVAILABLE and not config.SIMULATION_MODE and not SIM_FORCE:
+                from execution.mt5_executor import check_breakeven_all
+                check_breakeven_all(_breakeven_tracker)    
             _dur = round(time.time() - _t0, 1)
             _scan_times.append(_dur)
             if len(_scan_times) > 5:

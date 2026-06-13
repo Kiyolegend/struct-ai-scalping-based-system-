@@ -64,7 +64,7 @@ def _connect():
     return mt5
 
 
-def place_order(decision: dict, lot: float) -> bool:
+def place_order(decision: dict, lot: float) -> int:
     """Send a market order to MT5. Returns True if filled.
 
     The symbol is taken from the decision dict (which carries the pair name
@@ -76,11 +76,11 @@ def place_order(decision: dict, lot: float) -> bool:
         import MetaTrader5 as mt5
     except ImportError:
         print("  [ERROR] MetaTrader5 package not installed.")
-        return False
+        return 0
 
     mt5_inst = _connect()
     if mt5_inst is None:
-        return False
+        return 0
 
     try:
         # ── Resolve the correct MT5 symbol for this signal ────────────────
@@ -94,7 +94,7 @@ def place_order(decision: dict, lot: float) -> bool:
         if price_info is None:
             print(f"  [ERROR] Cannot get price for {mt5_symbol}.")
             print(f"          Check that {mt5_symbol} is visible in MT5 Market Watch.")
-            return False
+            return 0
 
         fill_price = price_info.ask if decision["type"] == "BUY" else price_info.bid
 
@@ -128,16 +128,16 @@ def place_order(decision: dict, lot: float) -> bool:
 
         if result is None:
             print(f"  [ERROR] MT5 order_send returned None: {mt5.last_error()}")
-            return False
+            return 0
 
         if result.retcode == mt5.TRADE_RETCODE_DONE:
             print(f"\n  ORDER FILLED  ticket={result.order}")
             print(f"  {decision['type']} {lot} lots {mt5_symbol} @ {fill_price:.5f}")
             print(f"  SL={decision['sl']:.5f}  TP={decision['tp']:.5f}\n")
-            return True
+            return result.order
         else:
             print(f"  [ERROR] Order failed: retcode={result.retcode} | {result.comment}")
-            return False
+            return 0
 
     finally:
         mt5.shutdown()
@@ -157,19 +157,85 @@ def has_open_position(symbol: str) -> bool:
     try:
         import MetaTrader5 as mt5
     except ImportError:
-        return False
+        return false
 
     mt5_inst = _connect()
     if mt5_inst is None:
-        return False
+        return false
 
     try:
         sym_cfg    = config.get_symbol_cfg(symbol)
         mt5_symbol = sym_cfg["mt5_name"]          # e.g. "GBPUSDm", "EURUSDm"
         positions  = mt5.positions_get(symbol=mt5_symbol)
         if positions is None:
-            return False
+            return 0
         return any(p.magic == 202401 for p in positions)
 
+    finally:
+        mt5.shutdown()
+
+
+def check_breakeven_all(tracker: dict) -> None:
+    """
+    For every tracked live ticket, check if price has moved 1.5R in our
+    favour on the 15M chart. If so, move SL to entry + 1 pip (breakeven).
+    Called once per engine scan cycle.
+    """
+    if not tracker:
+        return
+
+    try:
+        import MetaTrader5 as mt5
+    except ImportError:
+        return
+
+    mt5_inst = _connect()
+    if mt5_inst is None:
+        return
+
+    try:
+        for ticket, info in list(tracker.items()):
+            if info.get("moved"):
+                continue
+
+            positions = mt5.positions_get(ticket=ticket)
+            if not positions:
+                del tracker[ticket]
+                continue
+
+            entry   = info["entry"]
+            sl_orig = info["sl_orig"]
+            one_r   = abs(entry - sl_orig)
+            pip     = 0.01 if entry > 50 else 0.0001
+
+            if one_r <= 0:
+                continue
+
+            rates = mt5.copy_rates_from_pos(info["mt5_symbol"], mt5.TIMEFRAME_M15, 1, 1)
+            if not rates:
+                continue
+
+            close = float(rates[0]["close"])
+
+            if info["direction"] == "BUY":
+                if close < entry + 1.5 * one_r:
+                    continue
+                new_sl = round(entry + pip, 5)
+            else:
+                if close > entry - 1.5 * one_r:
+                    continue
+                new_sl = round(entry - pip, 5)
+
+            pos    = positions[0]
+            result = mt5.order_send({
+                "action":   mt5.TRADE_ACTION_SLTP,
+                "symbol":   info["mt5_symbol"],
+                "position": ticket,
+                "sl":       new_sl,
+                "tp":       pos.tp if pos.tp > 0 else info["tp"],
+            })
+            if result and result.retcode == mt5.TRADE_RETCODE_DONE:
+                info["moved"] = True
+                print(f"  [BE] ✅ ticket={ticket} {info['direction']} SL → {new_sl}")
     finally:
         mt5.shutdown()
