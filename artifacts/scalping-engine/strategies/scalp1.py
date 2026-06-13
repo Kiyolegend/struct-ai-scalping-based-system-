@@ -175,14 +175,16 @@ def check(state: dict, debug: bool = False) -> dict | None:
     dist_from_pullback = abs(price - pullback_price_15m)
     dist_pips          = dist_from_pullback / pip
 
-    if dist_pips > 10:
-        if debug: print(f"    [S1] skip: price {dist_pips:.1f}p from pullback (>10p)")
+    if dist_pips > 13:
+        if debug: print(f"    [S1] skip: price {dist_pips:.1f}p from pullback (>13p)")
         return None
 
     if dist_pips <= 5:
         location_score = 15
     elif dist_pips <= 10:
         location_score = 10
+    elif dist_pips <= 13:
+        location_score = 5    
     else:
         location_score = 0
 

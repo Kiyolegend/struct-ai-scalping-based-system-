@@ -68,7 +68,7 @@ def _detect_compression(candles: list,
     ratio      = recent_avg / baseline_avg
 
     return {
-        "confirmed":     ratio <= 0.65,
+        "confirmed":     ratio <= 0.70,
         "high":          max(c["high"] for c in recent),
         "low":           min(c["low"]  for c in recent),
         "avg_range":     recent_avg,
