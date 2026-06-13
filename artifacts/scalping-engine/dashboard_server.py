@@ -86,7 +86,6 @@ engine_state = {
 }
 _breakeven_tracker: dict[int, dict] = {}
 _scan_times = []
-_scan_times = []
 state_lock = threading.Lock()
 _last_broker_ts: float = 0.0   # updated every scan with broker candle time
 def _broker_now_utc():

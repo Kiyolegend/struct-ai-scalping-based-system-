@@ -86,6 +86,7 @@ def place_order(decision: dict, lot: float) -> int:
         # ── Resolve the correct MT5 symbol for this signal ────────────────
         signal_sym = decision.get("symbol", config.SYMBOL)
         sym_cfg    = config.get_symbol_cfg(signal_sym)
+        mt5_symbol = sym_cfg["mt5_name"]
 
 
         trade_type = mt5.ORDER_TYPE_BUY if decision["type"] == "BUY" else mt5.ORDER_TYPE_SELL
