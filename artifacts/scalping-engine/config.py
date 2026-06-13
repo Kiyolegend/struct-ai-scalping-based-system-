@@ -93,6 +93,8 @@ MIN_RR = 2.0
 # Net RR = (TP_pips - total_cost) / (SL_pips + total_cost).
 # Raised from 1.5 → 1.6 to account for the Nexus commission pip gap.
 NET_MIN_RR = 1.5
+# Add directly below it:
+MAX_ENTRY_DRIFT_PIPS = 3   # skip order if live price has moved >3p from signal entry
 
 TARGET_RR  = 2.0
 MAX_TRADES_PER_DAY = 3

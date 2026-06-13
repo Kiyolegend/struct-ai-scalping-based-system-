@@ -99,6 +99,14 @@ def place_order(decision: dict, lot: float) -> int:
 
         fill_price = price_info.ask if decision["type"] == "BUY" else price_info.bid
 
+        # Entry drift guard — skip if price has moved too far from signal entry
+        signal_entry = float(decision.get("entry") or fill_price)
+        drift_pips   = abs(fill_price - signal_entry) / sym_cfg["pip_size"]
+        if drift_pips > config.MAX_ENTRY_DRIFT_PIPS:
+            print(f"  [DRIFT] Skipped — price drifted {drift_pips:.1f}p from signal entry "
+                  f"(max {config.MAX_ENTRY_DRIFT_PIPS}p)")
+            return 0
+
         # Auto-detect the correct filling mode supported by this broker/symbol.
         # Different brokers support different modes — this avoids retcode 10030.
         sym_info = mt5.symbol_info(mt5_symbol)
