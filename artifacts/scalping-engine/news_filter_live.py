@@ -58,6 +58,24 @@ def _get_pair_impact(pair: str, at_ts: float | None = None) -> dict | None:
         return None
 
 
+
+def _get_fomc_window_live(reference_ts: float | None = None) -> dict | None:
+    """Ask Repo3 for today's actual FOMC announcement time and block window."""
+    try:
+        params = {}
+        if reference_ts:
+            params["at"] = int(reference_ts)
+        r = requests.get(
+            f"{NEWS_IMPACT_URL}/api/impact/fomc-window",
+            params=params,
+            timeout=SERVICE_TIMEOUT,
+        )
+        r.raise_for_status()
+        data = r.json()
+        return data if data.get("found") else None
+    except Exception:
+        return None
+
 # ── Static fallback (from original news_filter.py) ───────────────────────────
 # Keep this in sync with the main news_filter.py if you add new dates there.
 
@@ -116,17 +134,34 @@ def _in_daily_window(now: datetime) -> tuple[bool, str]:
 
 
 def _static_hard_dates(reference_ts: float | None = None) -> tuple[bool, str]:
-    """Fed days and NFP Fridays — always block regardless of live service."""
+    """NFP Fridays (time-windowed) and Fed days (time-windowed via live FOMC lookup)."""
     now = (datetime.fromtimestamp(reference_ts, tz=timezone.utc) if reference_ts else datetime.now(timezone.utc))
     key = (now.year, now.month, now.day)
+
     if _is_first_friday(now):
         now_mins        = now.hour * 60 + now.minute
         nfp_block_start = 11 * 60 + 45
         nfp_block_end   = 14 * 60 + 30
         if nfp_block_start <= now_mins < nfp_block_end:
             return True, "NFP Friday — danger window 11:45–14:30 UTC"
+
     if key in FED_DATES:
-        return True, "Fed rate decision day — no trading all day"
+        # Ask Repo3 for the real FOMC time from ForexFactory
+        live_window = _get_fomc_window_live(reference_ts)
+        if live_window:
+            now_ts = now.timestamp()
+            if live_window["block_start_ts"] <= now_ts <= live_window["block_end_ts"]:
+                return True, (
+                    f"FOMC rate decision window "
+                    f"({live_window['block_start_utc']} – {live_window['block_end_utc']})"
+                )
+            return False, ""   # FOMC is today but we're outside the window — allow trading
+        # Repo3 unreachable — static fallback: block 17:30–19:15 UTC
+        now_mins = now.hour * 60 + now.minute
+        if (17 * 60 + 30) <= now_mins < (19 * 60 + 15):
+            return True, "FOMC rate decision window — 17:30–19:15 UTC (static fallback)"
+        return False, ""
+
     return False, ""
 
 
@@ -157,12 +192,7 @@ def is_global_blocked(reference_ts: float | None = None) -> tuple[bool, str]:
     Fed days and NFP Fridays always block — no live service needed.
     Daily data windows only block when live service is unreachable.
     """
-    # Fed days and NFP always block — live service cannot override these.
-    hard_blocked, hard_reason = _static_hard_dates(reference_ts)
-    if hard_blocked:
-        return True, f"[STATIC] {hard_reason}"
-
-    # Query live service for USD/JPY as a global US-event proxy
+        # Live service (Repo3) is checked FIRST — if it's running, it is the authority.
     live_data = _get_pair_impact("USD/JPY", at_ts=reference_ts)
 
     if live_data is not None:
@@ -171,8 +201,11 @@ def is_global_blocked(reference_ts: float | None = None) -> tuple[bool, str]:
             return True, f"[LIVE] {reason}"
         return False, ""
 
-        # Live service unreachable — only Fed/NFP hard dates block (above).
-    # Daily windows not applied as fallback — they block London/NY open every day.
+    # Repo3 unreachable — fall back to static hard dates (NFP window + FOMC window).
+    hard_blocked, hard_reason = _static_hard_dates(reference_ts)
+    if hard_blocked:
+        return True, f"[STATIC] {hard_reason}"
+
     return False, ""
 
 def is_symbol_blocked(symbol: str, reference_ts: float | None = None) -> tuple[bool, str]:
