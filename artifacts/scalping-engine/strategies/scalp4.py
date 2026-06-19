@@ -558,8 +558,8 @@ def check(state: dict, debug: bool = False) -> dict | None:
         print(f"    [S4] REJECTED: SL too tight ({sl_dist/pip:.1f}p < {config.MIN_SL_PIPS})")
         return None
 
-    if abs(tp - price) / sl_dist < 1.5:
-        print(f"    [S4] REJECTED: raw RR < 1.5")
+    if abs(tp - price) / sl_dist < 2.0:
+        print(f"    [S4] REJECTED: raw RR < 2.0")
         return None
 
     if net_rr < config.NET_MIN_RR:

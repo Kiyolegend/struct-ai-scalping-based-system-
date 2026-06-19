@@ -216,12 +216,7 @@ def is_global_blocked(reference_ts: float | None = None) -> tuple[bool, str]:
 
     return False, ""
 
-    # Repo3 unreachable — fall back to static hard dates (NFP window + FOMC window).
-    hard_blocked, hard_reason = _static_hard_dates(reference_ts)
-    if hard_blocked:
-        return True, f"[STATIC] {hard_reason}"
-
-    return False, ""
+    
 
 def is_symbol_blocked(symbol: str, reference_ts: float | None = None) -> tuple[bool, str]:
     """

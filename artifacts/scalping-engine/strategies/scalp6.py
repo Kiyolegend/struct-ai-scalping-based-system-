@@ -466,8 +466,8 @@ def check(state: dict, debug: bool = False) -> dict | None:
     net_sl_dist     = sl_dist + cost_amount
     net_rr          = round(net_tp_dist / net_sl_dist, 2) if net_sl_dist > 0 else 0
 
-    if abs(tp - price) / sl_dist < 1.5:
-        if debug: print("    [S6] REJECTED: raw RR < 1.5")
+    if abs(tp - price) / sl_dist < 2.0:
+        if debug: print("    [S6] REJECTED: raw RR < 2.0")
         return None
 
     if net_rr < config.NET_MIN_RR:

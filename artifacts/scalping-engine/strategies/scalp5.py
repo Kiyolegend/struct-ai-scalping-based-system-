@@ -364,9 +364,9 @@ def check(state: dict, debug: bool = False) -> dict | None:
               f"align={alignment_bonus} bos={bos_score} level={level_score} "
               f"sweep={sweep_bonus} zone={zone_bonus} → {total_score}")
 
-    effective_min = max(85, config.MIN_CONFIDENCE)
+    effective_min = max(80, config.MIN_CONFIDENCE)
     if total_score < effective_min:
-       print(f"    [S5] skip: score {total_score} < {effective_min} (S5_MIN=85, MIN_CONFIDENCE={config.MIN_CONFIDENCE})")
+       print(f"    [S5] skip: score {total_score} < {effective_min} (S5_MIN=80, MIN_CONFIDENCE={config.MIN_CONFIDENCE})")
        return None
 
     # ── SL / TP ───────────────────────────────────────────────────────────
@@ -432,8 +432,8 @@ def check(state: dict, debug: bool = False) -> dict | None:
         print(f"    [S5] REJECTED: SL too tight ({sl_dist/pip:.1f}p < {config.MIN_SL_PIPS})")
         return None
 
-    if abs(tp - price) / sl_dist < 1.5:
-        print(f"    [S5] REJECTED: raw RR < 1.5")
+    if abs(tp - price) / sl_dist < 2.0:
+        print(f"    [S5] REJECTED: raw RR < 2.0")
         return None
 
     if net_rr < config.NET_MIN_RR:
