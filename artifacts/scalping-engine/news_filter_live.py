@@ -189,17 +189,32 @@ def is_global_blocked(reference_ts: float | None = None) -> tuple[bool, str]:
     """
     Check if ALL pairs should be blocked right now.
 
-    Fed days and NFP Fridays always block — no live service needed.
-    Daily data windows only block when live service is unreachable.
-    """
-        # Live service (Repo3) is checked FIRST — if it's running, it is the authority.
-    live_data = _get_pair_impact("USD/JPY", at_ts=reference_ts)
+    Uses TWO pairs to decide — USD/JPY + EUR/USD must BOTH be blocked before
+    all pairs are stopped. This prevents false-positive global blocks from
+    JPY-only events (BoJ) or EUR-only events (ECB), which affect only their
+    own pair. A USD event (NFP, FOMC, CPI) blocks both pairs simultaneously
+    and is the only scenario that should globally halt all trading.
 
-    if live_data is not None:
-        if live_data.get("blocked"):
-            reason = live_data.get("reason", "High-impact event — no trading")
+    Falls back to static hard dates (NFP window + FOMC window) when Repo3 is
+    unreachable.
+    """
+    usdpjy_data = _get_pair_impact("USD/JPY", at_ts=reference_ts)
+    eurusd_data  = _get_pair_impact("EUR/USD", at_ts=reference_ts)
+
+    if usdpjy_data is not None or eurusd_data is not None:
+        ujy_blocked = usdpjy_data.get("blocked", False) if usdpjy_data else False
+        eur_blocked  = eurusd_data.get("blocked",  False) if eurusd_data  else False
+        if ujy_blocked and eur_blocked:
+            reason = (usdpjy_data or eurusd_data).get("reason", "High-impact USD event — no trading")
             return True, f"[LIVE] {reason}"
         return False, ""
+
+    # Repo3 unreachable — fall back to static hard dates (NFP window + FOMC window).
+    hard_blocked, hard_reason = _static_hard_dates(reference_ts)
+    if hard_blocked:
+        return True, f"[STATIC] {hard_reason}"
+
+    return False, ""
 
     # Repo3 unreachable — fall back to static hard dates (NFP window + FOMC window).
     hard_blocked, hard_reason = _static_hard_dates(reference_ts)
