@@ -221,9 +221,20 @@ def _detect_micro_confirmation(s5m: dict, direction: str,
                 continue
             if (e.get("direction") == direction and
                     (now - e.get("time", 0)) <= max_age_secs):
-                return True
+                return e
 
-    return False
+    return None
+
+def _structure_holds(candles_5m: list, confirm_time: int, direction: str) -> bool:
+    post = [c for c in candles_5m if c.get("time", 0) > confirm_time]
+    if len(post) < 2:
+        return True
+    anchor_close = post[0].get("close", 0)
+    subsequent   = post[1:]
+    if direction == "bullish":
+        return not any(c.get("low", 0) < anchor_close for c in subsequent)
+    else:
+        return not any(c.get("high", float("inf")) > anchor_close for c in subsequent)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -517,9 +528,19 @@ def check(state: dict, debug: bool = False) -> dict | None:
         print(f"    [S4] {htf_direction} | bias={bias_score} comp={compression_score} "
               f"pool={pool_score} disp={displacement_score} prox={prox_score} "
               f"conf={confirm_score} sess={session_score} → {total_score}")
+        
 
-    if total_score < config.MIN_CONFIDENCE:
-        if debug: print(f"    [S4] skip: score {total_score} < {config.MIN_CONFIDENCE}")
+        # ── GATE: Post-confirmation structure must hold ───────────────────────
+    confirm_time = micro_ok.get("time", 0) if isinstance(micro_ok, dict) else 0
+    if confirm_time > 0 and candles_5m:
+        if not _structure_holds(candles_5m, confirm_time, htf_direction):
+            if debug:
+                print(f"    [S4] skip: post-BOS structure violated "
+                      f"— {htf_direction} breakout already failed, waiting for fresh setup")
+            return None
+
+    if total_score < max(config.MIN_CONFIDENCE, 80):
+        if debug: print(f"    [S4] skip: score {total_score} < {max(config.MIN_CONFIDENCE, 80)} (S4 local min=80)")
         return None
 
     # ── SL / TP ───────────────────────────────────────────────────────────

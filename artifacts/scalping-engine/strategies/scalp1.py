@@ -350,7 +350,7 @@ def check(state: dict, debug: bool = False) -> dict | None:
     sr_levels  = state.get("sr_levels") or []
     if not isinstance(sr_levels, list): sr_levels = []
     z_thresh   = near_pips * pip          # zone proximity tolerance
-    sr_thresh  = near_pips * pip * 3      # S/R levels are approximate — wider tolerance
+    sr_thresh  = near_pips * pip * 2     # S/R levels are approximate — wider tolerance
 
     def _price_in_zone(p: float) -> bool:
         """True if price p sits inside (or within tolerance of) any zone,
@@ -480,7 +480,7 @@ def check(state: dict, debug: bool = False) -> dict | None:
     # is what gets evaluated — not the lower pre-upgrade score.
     if len(matching_bos) < 2:
         is_displacement = False
-        for c in reversed(candles_5m[-6:]):
+        for c in reversed([c for c in candles_5m[-6:] if c.get("time", 0) >= confirm_time_bos]):
             o_ = c.get("open", 0); h_ = c.get("high", 0)
             l_ = c.get("low",  0); cl_= c.get("close",0)
             if (cl_ > o_) if direction == "bullish" else (cl_ < o_):
