@@ -210,13 +210,13 @@ def _detect_fvg(candles: list, direction: str, price: float, pip: float = 0.0001
 
 
 def _detect_micro_confirmation(s5m: dict, direction: str,
-                                max_age_secs: int = 1800, now_sec: int = 0) -> bool:
+    max_age_secs: int = 1800, now_sec: int = 0) -> dict | None:
     now      = now_sec or int(_time.time())
     bos_5m   = s5m.get("bos",   [])
     choch_5m = s5m.get("choch", [])
 
     for events in (choch_5m, bos_5m):
-        for e in reversed(events[-6:]):
+        for e in sorted(events, key=lambda x: x.get("time", 0), reverse=True)[:6]:
             if not isinstance(e, dict):
                 continue
             if (e.get("direction") == direction and
@@ -530,7 +530,7 @@ def check(state: dict, debug: bool = False) -> dict | None:
               f"conf={confirm_score} sess={session_score} → {total_score}")
         
 
-        # ── GATE: Post-confirmation structure must hold ───────────────────────
+    # ── GATE: Post-confirmation structure must hold ───────────────────────
     confirm_time = micro_ok.get("time", 0) if isinstance(micro_ok, dict) else 0
     if confirm_time > 0 and candles_5m:
         if not _structure_holds(candles_5m, confirm_time, htf_direction):
