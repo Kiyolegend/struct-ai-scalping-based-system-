@@ -53,8 +53,15 @@ Institutional confluence upgrade (v4):
     Rationale: session timing is a circumstantial filter (you can't force a setup
     during London); zone confluence is a structural quality signal about the
     specific setup itself and deserves higher weight.
-  - New score breakdown: bias(30) + pullback(20) + bos(20) + loc(15) + sess(5)
+    - New score breakdown: bias(30) + pullback(20) + bos(20) + loc(15) + sess(5)
     + zone(10) = 100 max.
+
+1H structure alignment bonus (v5):
+  - Optional bonus: +5pts when the 15M pullback HL aligns with a confirmed 1H HL.
+  - NOT a gate — good setups without 1H alignment still fire.
+  - When combined with zone confluence (HL+price@zone = 10pts) this can push
+    score to 105 in the best cases. Threshold stays at 85.
+  - Data is already in state["1h"]["structure"] — no new endpoints needed.
 """
 
 import sys, os, math, time as _time
@@ -369,9 +376,38 @@ def check(state: dict, debug: bool = False) -> dict | None:
         zone_score = 0
         zone_tag   = "✗"
 
+    
+    # ── Step 8: 1H structure alignment bonus (0 / 5 pts) ─────────────────
+    # v5 BONUS: checks if the 15M pullback HL formed at the same price as a
+    # confirmed 1H HL (bullish) or 1H LH (bearish). When two timeframes agree
+    # on the same structural level, institutional participation is confirmed at
+    # both scales — one of the strongest SMC confluence signals possible.
+    #
+    # This is a bonus, NOT a gate. Setups without 1H alignment are still valid.
+    # Data already exists in state["1h"]["structure"] — no new API calls needed.
+    #
+    #   5pts: 15M pullback HL is within 10 pips of a confirmed 1H structural point
+    #   0pts: no 1H structure alignment found
+    h1_struct_label  = "HL" if direction == "bullish" else "LH"
+    h1_struct_pts    = state.get("1h", {}).get("structure", [])
+    h1_struct_score  = 0
+    h1_struct_tag    = "✗"
+    h1_align_thresh  = near_pips * pip          # 10 pips — same as zone proximity
+
+    for pt in h1_struct_pts:
+        if not isinstance(pt, dict): continue
+        if pt.get("label") != h1_struct_label: continue
+        pt_price = pt.get("price")
+        if pt_price is None: continue
+        if abs(pullback_price_15m - pt_price) <= h1_align_thresh:
+            h1_struct_score = 5
+            h1_struct_tag   = "HL@1H"
+            break
+
     # ── Total score ───────────────────────────────────────────────────────
-    # Max possible: bias(30) + pullback(20) + bos(20) + loc(15) + sess(5) + zone(10) = 100
-    total_score = bias_score + pullback_score + bos_score + location_score + session_score + zone_score
+    # Normal max: bias(30) + pullback(20) + bos(20) + loc(15) + sess(5) + zone(10) = 100
+    # Best-case:  +5 bonus from 1H structure alignment = 105
+    total_score = bias_score + pullback_score + bos_score + location_score + session_score + zone_score + h1_struct_score
 
     # ── Displacement upgrade (must run BEFORE threshold gate) ─────────────
     # If only one BOS, check for a strong displacement candle (body ≥ 70%).
@@ -391,11 +427,13 @@ def check(state: dict, debug: bool = False) -> dict | None:
             print("    [S1] REJECTED: weak BOS — 1 BOS, no displacement candle")
             return None
         bos_score = 20  # single strong BOS upgraded to match TradeTeller scoring
-        total_score = bias_score + pullback_score + bos_score + location_score + session_score + zone_score
+        total_score = bias_score + pullback_score + bos_score + location_score + session_score + zone_score + h1_struct_score
 
     if debug:
         print(f"    [S1] {direction} | bias={bias_score} pb={pullback_score} bos={bos_score} "
-              f"loc={location_score} sess={session_score} zone={zone_score}({zone_tag}) → {total_score}")
+              f"loc={location_score} sess={session_score} zone={zone_score}({zone_tag}) "
+              f"1H={h1_struct_score}({h1_struct_tag}) → {total_score}")
+        
 
     if total_score < max(85, config.MIN_CONFIDENCE):
         if debug: print(f"    [S1] skip: score {total_score} < {max(85, config.MIN_CONFIDENCE)}")
@@ -498,8 +536,8 @@ def check(state: dict, debug: bool = False) -> dict | None:
         f"4H={b4h} 1H={b1h} 15M={b15m}({b15m_tag}) | "
         f"15M {pullback_label}={pb_qual} age={pb_age_h}h dist={dist_pips:.1f}p | "
         f"5M BOS {len(matching_bos)}× ✓held | loc={location_score}pts | "
-        f"sess={sessions} zone={zone_score}pts({zone_tag}) SL={sl_source} | "
-        f"spread={spread_pips}pip netRR={net_rr} score={total_score}/100"
+        f"sess={sessions} zone={zone_score}pts({zone_tag}) 1H={h1_struct_score}pts({h1_struct_tag}) SL={sl_source} | "
+        f"spread={spread_pips}pip netRR={net_rr} score={total_score}"
     )
 
     return {
