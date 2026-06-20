@@ -62,6 +62,20 @@ Institutional confluence upgrade (v4):
   - When combined with zone confluence (HL+price@zone = 10pts) this can push
     score to 105 in the best cases. Threshold stays at 85.
   - Data is already in state["1h"]["structure"] — no new endpoints needed.
+
+Asia range alignment bonus (v6):
+  - Optional bonus: +5pts when the 15M pullback HL formed at the Asia session
+    high (bullish) or Asia session low (bearish).
+  - Only relevant during London open — Asia range becomes key S/R after break.
+  - Data already in state["asia_range"] — no new endpoints needed.
+  - Theoretical max with all bonuses: 110 pts. Threshold stays at 85.
+
+15M HL recency bonus (v7):
+  - Optional bonus: +5pts if pullback HL formed < 4h ago, +3pts if < 12h ago.
+  - Within the 24h cap, a fresh HL means the pullback just completed — the
+    institutional absorption is recent and the impulse is imminent.
+  - Uses pb_time already computed in Step 3 — zero extra data needed.
+  - Theoretical max with all bonuses: 115 pts. Threshold stays at 85.
 """
 
 import sys, os, math, time as _time
@@ -376,7 +390,6 @@ def check(state: dict, debug: bool = False) -> dict | None:
         zone_score = 0
         zone_tag   = "✗"
 
-    
     # ── Step 8: 1H structure alignment bonus (0 / 5 pts) ─────────────────
     # v5 BONUS: checks if the 15M pullback HL formed at the same price as a
     # confirmed 1H HL (bullish) or 1H LH (bearish). When two timeframes agree
@@ -404,10 +417,61 @@ def check(state: dict, debug: bool = False) -> dict | None:
             h1_struct_tag   = "HL@1H"
             break
 
+    # ── Step 9: Asia range alignment bonus (0 / 5 pts) ───────────────────
+    # v6 BONUS: checks if the 15M pullback HL formed at the Asian session
+    # high (bullish) or Asian session low (bearish). When London price
+    # breaks the Asia range then pulls back to it, the Asia boundary flips
+    # to institutional S/R — the textbook SMC range-breakout setup.
+    #
+    #   5pts: 15M pullback HL within 10 pips of Asia high (bull) or low (bear)
+    #   0pts: no Asia range alignment
+    asia_range   = state.get("asia_range") or {}
+    asia_high    = asia_range.get("high")
+    asia_low     = asia_range.get("low")
+    asia_score   = 0
+    asia_tag     = "✗"
+    asia_thresh  = near_pips * pip
+
+    if direction == "bullish" and isinstance(asia_high, (int, float)):
+        if abs(pullback_price_15m - asia_high) <= asia_thresh:
+            asia_score = 5
+            asia_tag   = "HL@AsiaHi"
+    elif direction == "bearish" and isinstance(asia_low, (int, float)):
+        if abs(pullback_price_15m - asia_low) <= asia_thresh:
+            asia_score = 5
+            asia_tag   = "LH@AsiaLo"
+
+    # ── Step 10: 15M HL recency bonus (0 / 3 / 5 pts) ────────────────────
+    # v7 BONUS: rewards how fresh the 15M pullback HL is. Within the 24h cap,
+    # a HL that formed recently means the pullback is still "active" —
+    # institutional absorption is recent and the impulse is imminent.
+    # A HL from 20 hours ago is structurally valid but less predictive.
+    #
+    # Note: the 5M BOS 30-min freshness filter already ensures the MARKET is
+    # acting on this level right now. Recency of the 15M HL adds a second
+    # quality dimension — how long ago did the pullback itself complete?
+    #
+    # Uses pb_time already computed in Step 3 — zero extra data needed.
+    #
+    #   5pts: HL formed < 4 hours ago   — pullback just completed, impulse imminent
+    #   3pts: HL formed 4–12 hours ago  — recent, still within today's structure
+    #   0pts: HL formed 12–24 hours ago — stale (valid within cap, diminished quality)
+    pb_age_hours = (now_sec - pb_time) / 3600 if pb_time else 9999
+
+    if pb_age_hours < 4:
+        recency_score = 5
+        recency_tag   = "fresh(<4h)"
+    elif pb_age_hours < 12:
+        recency_score = 3
+        recency_tag   = "recent(<12h)"
+    else:
+        recency_score = 0
+        recency_tag   = "stale(>12h)"
+
     # ── Total score ───────────────────────────────────────────────────────
     # Normal max: bias(30) + pullback(20) + bos(20) + loc(15) + sess(5) + zone(10) = 100
-    # Best-case:  +5 bonus from 1H structure alignment = 105
-    total_score = bias_score + pullback_score + bos_score + location_score + session_score + zone_score + h1_struct_score
+    # Best-case:  +5 (1H struct) +5 (Asia range) +5 (recency) = 115 theoretical max
+    total_score = bias_score + pullback_score + bos_score + location_score + session_score + zone_score + h1_struct_score + asia_score + recency_score
 
     # ── Displacement upgrade (must run BEFORE threshold gate) ─────────────
     # If only one BOS, check for a strong displacement candle (body ≥ 70%).
@@ -427,13 +491,13 @@ def check(state: dict, debug: bool = False) -> dict | None:
             print("    [S1] REJECTED: weak BOS — 1 BOS, no displacement candle")
             return None
         bos_score = 20  # single strong BOS upgraded to match TradeTeller scoring
-        total_score = bias_score + pullback_score + bos_score + location_score + session_score + zone_score + h1_struct_score
+        total_score = bias_score + pullback_score + bos_score + location_score + session_score + zone_score + h1_struct_score + asia_score + recency_score
 
     if debug:
         print(f"    [S1] {direction} | bias={bias_score} pb={pullback_score} bos={bos_score} "
               f"loc={location_score} sess={session_score} zone={zone_score}({zone_tag}) "
-              f"1H={h1_struct_score}({h1_struct_tag}) → {total_score}")
-        
+              f"1H={h1_struct_score}({h1_struct_tag}) asia={asia_score}({asia_tag}) "
+              f"rec={recency_score}({recency_tag}) → {total_score}")
 
     if total_score < max(85, config.MIN_CONFIDENCE):
         if debug: print(f"    [S1] skip: score {total_score} < {max(85, config.MIN_CONFIDENCE)}")
@@ -525,7 +589,7 @@ def check(state: dict, debug: bool = False) -> dict | None:
         print(f"    [S1] REJECTED: net RR {net_rr} < {config.NET_MIN_RR}")
         return None
 
-    pb_age_h = round((now_sec - pb_time) / 3600, 1) if pb_time else "?"
+    pb_age_h = round(pb_age_hours, 1)
     pb_qual  = "clean" if pullback_score == 20 else "weak"
     b15m_tag = (
         "pullback" if (direction == "bullish" and bear_15m) or (direction == "bearish" and bull_15m)
@@ -536,7 +600,8 @@ def check(state: dict, debug: bool = False) -> dict | None:
         f"4H={b4h} 1H={b1h} 15M={b15m}({b15m_tag}) | "
         f"15M {pullback_label}={pb_qual} age={pb_age_h}h dist={dist_pips:.1f}p | "
         f"5M BOS {len(matching_bos)}× ✓held | loc={location_score}pts | "
-        f"sess={sessions} zone={zone_score}pts({zone_tag}) 1H={h1_struct_score}pts({h1_struct_tag}) SL={sl_source} | "
+        f"sess={sessions} zone={zone_score}pts({zone_tag}) 1H={h1_struct_score}pts({h1_struct_tag}) "
+        f"asia={asia_score}pts({asia_tag}) rec={recency_score}pts({recency_tag}) SL={sl_source} | "
         f"spread={spread_pips}pip netRR={net_rr} score={total_score}"
     )
 
