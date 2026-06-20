@@ -25,6 +25,36 @@ Quality upgrades applied (v2):
     beyond the close of the very first post-BOS candle.
     Catches setups where the BOS was valid when it fired but the continuation has
     already failed — prevents entering into a broken 5M structure.
+
+Pullback logic upgrade (v3):
+  - CHANGED: 15M bearish bias is now the BEST setup (+30 pts) — it means the
+    pullback IS in progress and we are entering before the impulse, not after.
+    Previously this was a hard reject, which caused late entries.
+  - 15M neutral = good (+20 pts) — pullback may be finishing.
+  - 15M bullish = allowed but lower (+15 pts) — continuation, may be extended.
+  - BOS freshness tightened 1h → 30 min — a 50-min-old BOS is not the start
+    of the impulse. 30 min keeps entry at the very beginning of the move.
+  - Entry distance tightened 13p → 10p outer limit; tiers 3/7/10p.
+  - CHoCH soft filter: 1 counter CHoCH = allowed (that IS the pullback starting).
+    Reject only when 2+ counter CHoCHs exist with no bullish/bearish structural
+    recovery in between — that indicates a genuine reversal, not a pullback.
+
+Institutional confluence upgrade (v4):
+  - Zone scoring upgraded 5pts → 10pts max, now checks WHERE THE 15M HL FORMED
+    not just where price currently sits.
+    * 10pts: 15M HL formed at a demand zone or S/R level AND current price is
+      still within that zone — the pullback found institutional support and we
+      are entering exactly at the zone.
+    * 5pts: 15M HL at zone/S&R only (price moved slightly past it — level was
+      respected but entry is a pip or two above the zone).
+    * 5pts: current price in zone only (zone present, but HL didn't form there).
+    * 0pts: no zone confluence at all.
+  - To keep max score = 100, session bonus reduced 10pts → 5pts.
+    Rationale: session timing is a circumstantial filter (you can't force a setup
+    during London); zone confluence is a structural quality signal about the
+    specific setup itself and deserves higher weight.
+  - New score breakdown: bias(30) + pullback(20) + bos(20) + loc(15) + sess(5)
+    + zone(10) = 100 max.
 """
 
 import sys, os, math, time as _time
@@ -43,7 +73,7 @@ def _last_label(structure: list, label: str | tuple) -> dict | None:
     return None
 
 
-# ── NEW: Post-BOS structure holds ─────────────────────────────────────────────
+# ── Post-BOS structure holds ───────────────────────────────────────────────────
 def _structure_holds(candles_5m: list, confirm_time: int, direction: str) -> bool:
     """
     After the 5M BOS timestamp, subsequent 5M candles must not violate the
@@ -104,33 +134,62 @@ def check(state: dict, debug: bool = False) -> dict | None:
     if both_bull:
         direction  = "bullish"
         trade_type = "BUY"
+        # v3: 15M bearish = pullback in progress = BEST entry point
+        # v3: 15M bullish = continuation, may already be extended = lower score
         if bear_15m:
-            if debug: print("    [S1] skip: 15M bearish counters bullish 4H+1H")
-            return None
-        bias_score = 30 if bull_15m else 22
+            bias_score = 30   # pullback in progress — ideal
+        elif bull_15m:
+            bias_score = 15   # continuation — valid but may be extended
+        else:
+            bias_score = 20   # neutral — pullback likely finishing
     elif both_bear:
         direction  = "bearish"
         trade_type = "SELL"
         if bull_15m:
-            if debug: print("    [S1] skip: 15M bullish counters bearish 4H+1H")
-            return None
-        bias_score = 30 if bear_15m else 22
+            bias_score = 30   # pullback in progress — ideal
+        elif bear_15m:
+            bias_score = 15   # continuation — valid but may be extended
+        else:
+            bias_score = 20   # neutral — pullback likely finishing
     else:
         if debug: print("    [S1] skip: 4H and 1H not both aligned")
         return None
 
-    # ── Step 2: 15M CHoCH invalidation — 4h look-back with time check ───
+    # ── Step 2: 15M CHoCH soft filter — 4h look-back ─────────────────────
+    # v3 CHANGE: Was a hard reject on any single counter CHoCH.
+    # Now: 1 counter CHoCH is ALLOWED — that IS the pullback starting.
+    # Reject only when 2+ counter CHoCHs exist with NO bullish/bearish
+    # structural recovery (HL/HH or LH/LL) between them. That pattern
+    # indicates a genuine multi-wave reversal, not a simple pullback.
     now_sec = config.get_broker_ts(state)
     choch_15m    = s15m.get("choch", [])
     recent_choch = [c for c in choch_15m
                     if isinstance(c, dict) and (now_sec - c.get("time", 0)) <= 4 * 3600][-3:]
 
-    if direction == "bullish" and any(c.get("direction") == "bearish" for c in recent_choch):
-        if debug: print("    [S1] skip: bearish CHoCH on 15M (within 4h)")
-        return None
-    if direction == "bearish" and any(c.get("direction") == "bullish" for c in recent_choch):
-        if debug: print("    [S1] skip: bullish CHoCH on 15M (within 4h)")
-        return None
+    if direction == "bullish":
+        counter_chochs = [c for c in recent_choch if c.get("direction") == "bearish"]
+        if len(counter_chochs) >= 2:
+            struct_15m_now   = s15m.get("structure", [])
+            first_choch_time = min(c.get("time", 0) for c in counter_chochs)
+            recovery = [s for s in struct_15m_now
+                        if isinstance(s, dict)
+                        and s.get("label") in ("HL", "HH")
+                        and s.get("time", 0) > first_choch_time]
+            if not recovery:
+                if debug: print("    [S1] skip: 2+ bearish CHoCHs on 15M, no HL/HH recovery — reversal, not pullback")
+                return None
+    else:
+        counter_chochs = [c for c in recent_choch if c.get("direction") == "bullish"]
+        if len(counter_chochs) >= 2:
+            struct_15m_now   = s15m.get("structure", [])
+            first_choch_time = min(c.get("time", 0) for c in counter_chochs)
+            recovery = [s for s in struct_15m_now
+                        if isinstance(s, dict)
+                        and s.get("label") in ("LH", "LL")
+                        and s.get("time", 0) > first_choch_time]
+            if not recovery:
+                if debug: print("    [S1] skip: 2+ bullish CHoCHs on 15M, no LH/LL recovery — reversal, not pullback")
+                return None
 
     # ── Step 3: 15M pullback — 24h age cap ───────────────────────────────
     struct_15m = s15m.get("structure", [])
@@ -169,36 +228,40 @@ def check(state: dict, debug: bool = False) -> dict | None:
         if debug: print(f"    [S1] skip: no current 15M pullback structure")
         return None
 
-    # ── Step 4: Entry location — tighter distance scoring ────────────────
+    # ── Step 4: Entry location — tightened distance scoring ──────────────
+    # v3: outer limit 13p → 10p; tighter tier boundaries 3/7/10p
     pip                = config.get_symbol_cfg(state.get("symbol"))["pip_size"]
     near_pips          = config.NEAR_LEVEL_PIPS
     dist_from_pullback = abs(price - pullback_price_15m)
     dist_pips          = dist_from_pullback / pip
 
-    if dist_pips > 13:
-        if debug: print(f"    [S1] skip: price {dist_pips:.1f}p from pullback (>13p)")
+    if dist_pips > 10:
+        if debug: print(f"    [S1] skip: price {dist_pips:.1f}p from pullback (>10p)")
         return None
 
-    if dist_pips <= 5:
+    if dist_pips <= 3:
         location_score = 15
-    elif dist_pips <= 10:
+    elif dist_pips <= 7:
         location_score = 10
-    elif dist_pips <= 13:
-        location_score = 5    
+    elif dist_pips <= 10:
+        location_score = 5
     else:
         location_score = 0
 
-    # ── Step 5: 5M BOS — with 1h freshness check ─────────────────────────
+    # ── Step 5: 5M BOS — tightened to 30 min freshness ───────────────────
+    # v3: 1 hour → 30 minutes. A BOS older than 30 min is not the start of
+    # the impulse — the move has already happened. 30 min keeps entry at
+    # the very beginning of the impulse leg.
     bos_5m       = s5m.get("bos", [])
     matching_bos = [
         b for b in bos_5m[-6:]
         if isinstance(b, dict)
         and b.get("direction") == direction
-        and (now_sec - b.get("time", now_sec)) <= 1 * 3600
+        and (now_sec - b.get("time", now_sec)) <= 30 * 60
     ]
 
     if not matching_bos:
-        if debug: print(f"    [S1] skip: no {direction} BOS on 5M (or all stale >1h)")
+        if debug: print(f"    [S1] skip: no {direction} BOS on 5M (or all stale >30min)")
         return None
 
     bos_score = 20 if len(matching_bos) >= 2 else 10
@@ -217,7 +280,7 @@ def check(state: dict, debug: bool = False) -> dict | None:
         if debug: print(f"    [S1] skip: counter {counter_dir} BOS on 5M within 30min")
         return None
 
-    # ── NEW GATE: Post-BOS structure must hold ────────────────────────────
+    # ── GATE: Post-BOS structure must hold ───────────────────────────────
     # After the most recent valid BOS fired, the pullback continuation must
     # still be intact. If subsequent 5M candles have already broken back
     # through the first post-BOS close, the setup has failed — skip and wait
@@ -231,41 +294,83 @@ def check(state: dict, debug: bool = False) -> dict | None:
                       f"— {direction} continuation already invalidated, waiting for fresh BOS")
             return None
 
-    # ── Step 6: Session timing ────────────────────────────────────────────
+    # ── Step 6: Session timing (5pts) ────────────────────────────────────
+    # v4: reduced from 10pts → 5pts to make room for the upgraded zone check.
+    # Session timing is a circumstantial filter; zone confluence is a structural
+    # quality signal that deserves higher weight.
     sessions       = state.get("sessions", [])
     sessions_lower = [s.lower() for s in sessions]
 
     if any(s in sessions_lower for s in ["london", "ny", "new york"]):
-        session_score = 10
-    elif "asia" in sessions_lower or "asian" in sessions_lower:
-        session_score = 0
+        session_score = 5
     else:
         session_score = 0
 
-    # ── Step 7: Zone confluence (5pts) ───────────────────────────────────
+    # ── Step 7: Institutional zone confluence (0 / 5 / 10 pts) ──────────
+    # v4 UPGRADE: checks WHERE THE 15M HL ITSELF FORMED, not just where price
+    # happens to be right now. When the 15M pullback HL formed at a demand zone
+    # or S/R level, that means institutional orders absorbed the selling at that
+    # exact structural level — that is one of the highest-quality SMC signals.
+    #
+    # Scoring:
+    #   10pts: 15M HL formed at zone/S&R  AND  current price still in that zone
+    #           → pullback found institutional support and we're entering at it
+    #   5pts:  15M HL at zone/S&R only (price has since moved slightly above zone)
+    #           → level was respected; entry is a pip or two beyond the zone edge
+    #   5pts:  current price in zone only (zone present, but HL didn't form there)
+    #           → partial confluence; weaker than above
+    #   0pts:  no zone confluence at all
+
     zones_5m  = s5m.get("zones") or []
     zones_15m = s15m.get("zones") or []
     if not isinstance(zones_5m,  list): zones_5m  = []
     if not isinstance(zones_15m, list): zones_15m = []
-    threshold = near_pips * pip
+    all_zones  = zones_5m + zones_15m
+    sr_levels  = state.get("sr_levels") or []
+    if not isinstance(sr_levels, list): sr_levels = []
+    z_thresh   = near_pips * pip          # zone proximity tolerance
+    sr_thresh  = near_pips * pip * 3      # S/R levels are approximate — wider tolerance
 
-    zone_ok = False
-    for zone in zones_5m + zones_15m:
-        if not isinstance(zone, dict): continue
-        top    = zone.get("top") or 0
-        bottom = zone.get("bottom") or 0
-        if top == 0 and bottom == 0: continue
-        center = zone.get("center", (top + bottom) / 2)
-        near   = (bottom - threshold) <= price <= (top + threshold)
-        if not near: continue
-        if direction == "bullish" and price <= center:
-            zone_ok = True; break
-        if direction == "bearish" and price >= center:
-            zone_ok = True; break
+    def _price_in_zone(p: float) -> bool:
+        """True if price p sits inside (or within tolerance of) any zone,
+        on the correct side of center for the trade direction."""
+        for z in all_zones:
+            if not isinstance(z, dict): continue
+            top = z.get("top") or 0; bot = z.get("bottom") or 0
+            if top == 0 and bot == 0: continue
+            center = z.get("center", (top + bot) / 2)
+            if not ((bot - z_thresh) <= p <= (top + z_thresh)): continue
+            if direction == "bullish" and p <= center + z_thresh: return True
+            if direction == "bearish" and p >= center - z_thresh: return True
+        return False
 
-    zone_score = 5 if zone_ok else 0
+    def _price_at_sr(p: float) -> bool:
+        """True if price p is within sr_thresh of a matching S/R level."""
+        sr_kind = "support" if direction == "bullish" else "resistance"
+        for lvl in sr_levels:
+            if not isinstance(lvl, dict): continue
+            if lvl.get("kind") != sr_kind: continue
+            if abs(lvl.get("price", 0) - p) <= sr_thresh: return True
+        return False
+
+    hl_at_institutional = _price_in_zone(pullback_price_15m) or _price_at_sr(pullback_price_15m)
+    price_in_zone_now   = _price_in_zone(price)
+
+    if hl_at_institutional and price_in_zone_now:
+        zone_score = 10   # best: HL formed at zone, still inside it
+        zone_tag   = "HL+price@zone"
+    elif hl_at_institutional:
+        zone_score = 5    # HL at institutional level, price moved slightly out
+        zone_tag   = "HL@zone"
+    elif price_in_zone_now:
+        zone_score = 5    # price in zone but HL didn't form at institutional level
+        zone_tag   = "price@zone"
+    else:
+        zone_score = 0
+        zone_tag   = "✗"
 
     # ── Total score ───────────────────────────────────────────────────────
+    # Max possible: bias(30) + pullback(20) + bos(20) + loc(15) + sess(5) + zone(10) = 100
     total_score = bias_score + pullback_score + bos_score + location_score + session_score + zone_score
 
     # ── Displacement upgrade (must run BEFORE threshold gate) ─────────────
@@ -290,7 +395,7 @@ def check(state: dict, debug: bool = False) -> dict | None:
 
     if debug:
         print(f"    [S1] {direction} | bias={bias_score} pb={pullback_score} bos={bos_score} "
-              f"loc={location_score} sess={session_score} zone={zone_score} → {total_score}")
+              f"loc={location_score} sess={session_score} zone={zone_score}({zone_tag}) → {total_score}")
 
     if total_score < max(85, config.MIN_CONFIDENCE):
         if debug: print(f"    [S1] skip: score {total_score} < {max(85, config.MIN_CONFIDENCE)}")
@@ -356,7 +461,7 @@ def check(state: dict, debug: bool = False) -> dict | None:
     sl_dist = abs(price - sl)
     _fib = config.fib_extension_tp(state, direction, price)
     tp   = _fib if _fib is not None else (
-               (price + sl_dist *config.TARGET_RR) if direction == "bullish" else (price - sl_dist * config.TARGET_RR))
+               (price + sl_dist * config.TARGET_RR) if direction == "bullish" else (price - sl_dist * config.TARGET_RR))
     rr      = round(config.TARGET_RR, 2)
     sl      = round(sl, 5)
     tp      = round(tp, 5)
@@ -367,8 +472,8 @@ def check(state: dict, debug: bool = False) -> dict | None:
     net_tp_dist     = max(abs(tp - price) - cost_amount, 0.0)
     net_sl_dist     = sl_dist + cost_amount
     net_rr          = round(net_tp_dist / net_sl_dist, 2) if net_sl_dist > 0 else 0
+
     # ── Post filters ──────────────────────────────────────────────────────
-    
 
     if sl_dist < config.MIN_SL_PIPS * pip:
         print(f"    [S1] REJECTED: SL too tight ({sl_dist/pip:.1f}p < {config.MIN_SL_PIPS})")
@@ -384,11 +489,16 @@ def check(state: dict, debug: bool = False) -> dict | None:
 
     pb_age_h = round((now_sec - pb_time) / 3600, 1) if pb_time else "?"
     pb_qual  = "clean" if pullback_score == 20 else "weak"
+    b15m_tag = (
+        "pullback" if (direction == "bullish" and bear_15m) or (direction == "bearish" and bull_15m)
+        else "cont"    if (direction == "bullish" and bull_15m) or (direction == "bearish" and bear_15m)
+        else "neutral"
+    )
     reason   = (
-        f"4H={b4h} 1H={b1h} | "
+        f"4H={b4h} 1H={b1h} 15M={b15m}({b15m_tag}) | "
         f"15M {pullback_label}={pb_qual} age={pb_age_h}h dist={dist_pips:.1f}p | "
         f"5M BOS {len(matching_bos)}× ✓held | loc={location_score}pts | "
-        f"sess={sessions} zone={'✓' if zone_ok else '✗'} SL={sl_source} | "
+        f"sess={sessions} zone={zone_score}pts({zone_tag}) SL={sl_source} | "
         f"spread={spread_pips}pip netRR={net_rr} score={total_score}/100"
     )
 
