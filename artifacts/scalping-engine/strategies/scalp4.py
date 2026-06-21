@@ -58,7 +58,7 @@ def _detect_compression(candles: list,
     baseline = candles[-(compress_window + baseline_window):-compress_window]
 
     def avg_range(cs):
-        return sum(c["high"] - c["low"] for c in cs) / len(cs)
+        return sum(c.get("high", 0) - c.get("low", 0) for c in cs) / len(cs)
 
     baseline_avg = avg_range(baseline)
     if baseline_avg == 0:
@@ -69,8 +69,8 @@ def _detect_compression(candles: list,
 
     return {
         "confirmed":     ratio <= 0.70,
-        "high":          max(c["high"] for c in recent),
-        "low":           min(c["low"]  for c in recent),
+        "high":          max(c.get("high", 0) for c in recent),
+        "low":           min(c.get("low", 0) for c in recent),
         "avg_range":     recent_avg,
         "baseline_avg":  baseline_avg,
         "ratio":         round(ratio, 3),
@@ -90,7 +90,7 @@ def _find_swing_highs(candles: list, pip: float,
         if (candles[i]["high"] > candles[i - 1]["high"] and
                 candles[i]["high"] > candles[i + 1]["high"]):
             if not swing_highs or (i - swing_highs[-1][0]) >= min_spacing:
-                swing_highs.append((i, candles[i]["high"]))
+                swing_highs.append((i, candles[i].get("high", 0)))
 
     if len(swing_highs) < 2:
         return None
@@ -110,10 +110,10 @@ def _find_swing_lows(candles: list, pip: float,
     tolerance = tolerance_pips * pip
     swing_lows = []
     for i in range(1, len(candles) - 1):
-        if (candles[i]["low"] < candles[i - 1]["low"] and
-                candles[i]["low"] < candles[i + 1]["low"]):
+        if (candles[i].get("low", 0) < candles[i - 1].get("low", 0) and
+                candles[i].get("low", 0) < candles[i + 1].get("low", 0)):
             if not swing_lows or (i - swing_lows[-1][0]) >= min_spacing:
-                swing_lows.append((i, candles[i]["low"]))
+                swing_lows.append((i, candles[i].get("low", 0)))
 
     if len(swing_lows) < 2:
         return None
@@ -279,11 +279,11 @@ def _ob_at_level(candles: list, level: float, pip: float,
     min_size  = 3 * pip
     if n < 6:
         return False
-
-    for i in range(1, n - 3):
-        c        = candles[i]
-        lookback = candles[max(0, i - 8):i]
-        avg_rng  = (
+    try:
+        for i in range(1, n - 3):
+            c        = candles[i]
+            lookback = candles[max(0, i - 8):i]
+            avg_rng  = (
             sum(x["high"] - x["low"] for x in lookback) / len(lookback)
             if lookback else 0
         )
@@ -313,6 +313,8 @@ def _ob_at_level(candles: list, level: float, pip: float,
                         if not any(fc["close"] > ob_mid for fc in candles[i + 1:]):
                             return True
 
+    except (KeyError, TypeError):
+        return False
     return False
 
 
@@ -410,11 +412,11 @@ def check(state: dict, debug: bool = False) -> dict | None:
     if b4h == b1h and b4h in ("bullish", "bearish"):
         htf_direction = b4h
         bias_score    = 25
-    elif b1h in ("bullish", "bearish"):
+    elif b4h in ("neutral", "") and b1h in ("bullish", "bearish"):
         htf_direction = b1h
         bias_score    = 12
     else:
-        if debug: print("    [S4] skip: no clear HTF bias")
+        if debug: print("    [S4] skip: no clear HTF bias or 4H/1H conflict")
         return None
 
     # ── Step 3: Compression detection (FIX 5: 15-candle baseline) ─────────

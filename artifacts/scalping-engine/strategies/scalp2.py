@@ -123,31 +123,33 @@ def _fvg_at_level(candles: list, level: float, direction: str,
     threshold = threshold_pips * pip
     if n < 3:
         return False
+    try:
+        for i in range(1, n - 1):
+            prev  = candles[i - 1]
+            next_ = candles[i + 1]
 
-    for i in range(1, n - 1):
-        prev  = candles[i - 1]
-        next_ = candles[i + 1]
+            if direction == "bullish":
+                gap_top    = next_["low"]
+                gap_bottom = prev["high"]
+                if gap_top > gap_bottom and (gap_top - gap_bottom) >= 3 * pip:
+                    center = (gap_top + gap_bottom) / 2
+                    if abs(center - level) <= threshold:
+                        mitigated = any(fc["close"] <= gap_bottom for fc in candles[i + 2:])
+                        if not mitigated:
+                            return True
 
-        if direction == "bullish":
-            gap_top    = next_["low"]
-            gap_bottom = prev["high"]
-            if gap_top > gap_bottom and (gap_top - gap_bottom) >= 3 * pip:
-                center = (gap_top + gap_bottom) / 2
-                if abs(center - level) <= threshold:
-                    mitigated = any(fc["close"] <= gap_bottom for fc in candles[i + 2:])
-                    if not mitigated:
-                        return True
+            elif direction == "bearish":
+                gap_top    = prev["low"]
+                gap_bottom = next_["high"]
+                if gap_top > gap_bottom and (gap_top - gap_bottom) >= 3 * pip:
+                    center = (gap_top + gap_bottom) / 2
+                    if abs(center - level) <= threshold:
+                        mitigated = any(fc["close"] >= gap_top for fc in candles[i + 2:])
+                        if not mitigated:
+                            return True
 
-        elif direction == "bearish":
-            gap_top    = prev["low"]
-            gap_bottom = next_["high"]
-            if gap_top > gap_bottom and (gap_top - gap_bottom) >= 3 * pip:
-                center = (gap_top + gap_bottom) / 2
-                if abs(center - level) <= threshold:
-                    mitigated = any(fc["close"] >= gap_top for fc in candles[i + 2:])
-                    if not mitigated:
-                        return True
-
+    except (KeyError, TypeError):
+        return False
     return False
 
 
@@ -166,41 +168,44 @@ def _ob4h_at_level(candles_4h: list, level: float, direction: str,
     min_size  = 5 * pip
     if n < 6:
         return False
+    
+    try:
+        for i in range(1, n - 3):
+            c        = candles_4h[i]
+            lookback = candles_4h[max(0, i - 8):i]
+            avg_rng  = (
+                sum(x["high"] - x["low"] for x in lookback) / len(lookback)
+                if lookback else 0
+            )
+            if avg_rng == 0:
+                continue
 
-    for i in range(1, n - 3):
-        c        = candles_4h[i]
-        lookback = candles_4h[max(0, i - 8):i]
-        avg_rng  = (
-            sum(x["high"] - x["low"] for x in lookback) / len(lookback)
-            if lookback else 0
-        )
-        if avg_rng == 0:
-            continue
+            fwd = candles_4h[i + 1: min(i + 5, n)]
 
-        fwd = candles_4h[i + 1: min(i + 5, n)]
+            if direction == "bullish" and c["close"] < c["open"]:
+                future_high = max((x["close"] for x in fwd), default=0)
+                if future_high > c["high"] and (c["high"] - c["low"]) >= min_size:
+                    brk = max(fwd, key=lambda x: x["high"] - x["low"], default=None)
+                    if brk and (brk["high"] - brk["low"]) >= 1.5 * avg_rng:
+                        center = (c["high"] + c["low"]) / 2
+                        if abs(center - level) <= threshold:
+                            ob_mid = (c["open"] + c["close"]) / 2
+                            if not any(fc["close"] < ob_mid for fc in candles_4h[i + 1:]):
+                                return True
 
-        if direction == "bullish" and c["close"] < c["open"]:
-            future_high = max((x["close"] for x in fwd), default=0)
-            if future_high > c["high"] and (c["high"] - c["low"]) >= min_size:
-                brk = max(fwd, key=lambda x: x["high"] - x["low"], default=None)
-                if brk and (brk["high"] - brk["low"]) >= 1.5 * avg_rng:
-                    center = (c["high"] + c["low"]) / 2
-                    if abs(center - level) <= threshold:
-                        ob_mid = (c["open"] + c["close"]) / 2
-                        if not any(fc["close"] < ob_mid for fc in candles_4h[i + 1:]):
-                            return True
+            elif direction == "bearish" and c["close"] > c["open"]:
+                future_low = min((x["close"] for x in fwd), default=float("inf"))
+                if future_low < c["low"] and (c["high"] - c["low"]) >= min_size:
+                    brk = max(fwd, key=lambda x: x["high"] - x["low"], default=None)
+                    if brk and (brk["high"] - brk["low"]) >= 1.5 * avg_rng:
+                        center = (c["high"] + c["low"]) / 2
+                        if abs(center - level) <= threshold:
+                            ob_mid = (c["open"] + c["close"]) / 2
+                            if not any(fc["close"] > ob_mid for fc in candles_4h[i + 1:]):
+                                return True
 
-        elif direction == "bearish" and c["close"] > c["open"]:
-            future_low = min((x["close"] for x in fwd), default=float("inf"))
-            if future_low < c["low"] and (c["high"] - c["low"]) >= min_size:
-                brk = max(fwd, key=lambda x: x["high"] - x["low"], default=None)
-                if brk and (brk["high"] - brk["low"]) >= 1.5 * avg_rng:
-                    center = (c["high"] + c["low"]) / 2
-                    if abs(center - level) <= threshold:
-                        ob_mid = (c["open"] + c["close"]) / 2
-                        if not any(fc["close"] > ob_mid for fc in candles_4h[i + 1:]):
-                            return True
-
+    except (KeyError, TypeError):
+        return False
     return False
 
 
