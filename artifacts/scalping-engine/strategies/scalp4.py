@@ -87,8 +87,8 @@ def _find_swing_highs(candles: list, pip: float,
     tolerance = tolerance_pips * pip
     swing_highs = []
     for i in range(1, len(candles) - 1):
-        if (candles[i]["high"] > candles[i - 1]["high"] and
-                candles[i]["high"] > candles[i + 1]["high"]):
+        if (candles[i].get("high", 0) > candles[i - 1].get("high", 0) and
+                candles[i].get("high", 0) > candles[i + 1].get("high", 0)):
             if not swing_highs or (i - swing_highs[-1][0]) >= min_spacing:
                 swing_highs.append((i, candles[i].get("high", 0)))
 
@@ -284,34 +284,34 @@ def _ob_at_level(candles: list, level: float, pip: float,
             c        = candles[i]
             lookback = candles[max(0, i - 8):i]
             avg_rng  = (
-            sum(x["high"] - x["low"] for x in lookback) / len(lookback)
-            if lookback else 0
-        )
-        if avg_rng == 0:
-            continue
-        fwd = candles[i + 1: min(i + 5, n)]
+                sum(x["high"] - x["low"] for x in lookback) / len(lookback)
+                if lookback else 0
+            )
+            if avg_rng == 0:
+                continue
+            fwd = candles[i + 1: min(i + 5, n)]
 
-        if c["close"] < c["open"] and (c["high"] - c["low"]) >= min_size:
-            future_high = max((x["close"] for x in fwd), default=0)
-            if future_high > c["high"]:
-                brk = max(fwd, key=lambda x: x["high"] - x["low"], default=None)
-                if brk and (brk["high"] - brk["low"]) >= 1.5 * avg_rng:
-                    center = (c["high"] + c["low"]) / 2
-                    if abs(center - level) <= threshold:
-                        ob_mid = (c["open"] + c["close"]) / 2
-                        if not any(fc["close"] < ob_mid for fc in candles[i + 1:]):
-                            return True
+            if c["close"] < c["open"] and (c["high"] - c["low"]) >= min_size:
+                future_high = max((x["close"] for x in fwd), default=0)
+                if future_high > c["high"]:
+                    brk = max(fwd, key=lambda x: x["high"] - x["low"], default=None)
+                    if brk and (brk["high"] - brk["low"]) >= 1.5 * avg_rng:
+                        center = (c["high"] + c["low"]) / 2
+                        if abs(center - level) <= threshold:
+                            ob_mid = (c["open"] + c["close"]) / 2
+                            if not any(fc["close"] < ob_mid for fc in candles[i + 1:]):
+                                return True
 
-        elif c["close"] > c["open"] and (c["high"] - c["low"]) >= min_size:
-            future_low = min((x["close"] for x in fwd), default=float("inf"))
-            if future_low < c["low"]:
-                brk = max(fwd, key=lambda x: x["high"] - x["low"], default=None)
-                if brk and (brk["high"] - brk["low"]) >= 1.5 * avg_rng:
-                    center = (c["high"] + c["low"]) / 2
-                    if abs(center - level) <= threshold:
-                        ob_mid = (c["open"] + c["close"]) / 2
-                        if not any(fc["close"] > ob_mid for fc in candles[i + 1:]):
-                            return True
+            elif c["close"] > c["open"] and (c["high"] - c["low"]) >= min_size:
+                future_low = min((x["close"] for x in fwd), default=float("inf"))
+                if future_low < c["low"]:
+                    brk = max(fwd, key=lambda x: x["high"] - x["low"], default=None)
+                    if brk and (brk["high"] - brk["low"]) >= 1.5 * avg_rng:
+                        center = (c["high"] + c["low"]) / 2
+                        if abs(center - level) <= threshold:
+                            ob_mid = (c["open"] + c["close"]) / 2
+                            if not any(fc["close"] > ob_mid for fc in candles[i + 1:]):
+                                return True
 
     except (KeyError, TypeError):
         return False
