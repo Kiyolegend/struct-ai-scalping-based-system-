@@ -75,68 +75,68 @@ def detect_order_blocks(candles: list, current_price: float, symbol: str = "") -
         # Average range of the last 10 bars (impulse proxy)
         lookback = candles[max(0, i - 10):i]
         avg_range = (
-            sum(x["high"] - x["low"] for x in lookback) / len(lookback)
+            sum(x.get("high", 0) - x.get("low", 0) for x in lookback) / len(lookback)
             if lookback else 0
         )
 
         # ── Bullish OB: bearish candle followed by impulsive move up ─────
-        if c["close"] < c["open"]:
+        if c.get("close", 0) < c.get("open", 0):
             slice_fwd  = candles[i + 1: min(i + 6, n)]
-            future_high = max((x["close"] for x in slice_fwd), default=0)
+            future_high = max((x.get("close", 0) for x in slice_fwd), default=0)
 
-            if future_high > c["high"] and (c["high"] - c["low"]) >= min_size:
-                break_candle = max(slice_fwd, key=lambda x: x["high"] - x["low"], default=None)
+            if future_high > c.get("high", 0) and (c.get("high", 0) - c.get("low", 0)) >= min_size:
+                break_candle = max(slice_fwd, key=lambda x: x.get("high", 0) - x.get("low", 0), default=None)
                 has_displacement = (
                     avg_range > 0 and break_candle is not None and
-                    (break_candle["high"] - break_candle["low"]) >= 1.5 * avg_range
+                    (break_candle.get("high", 0) - break_candle.get("low", 0)) >= 1.5 * avg_range
                 )
                 if not has_displacement:
                     continue
 
-                center = (c["high"] + c["low"]) / 2
+                center = (c.get("high", 0) + c.get("low", 0)) / 2
                 dist   = abs(center - current_price) / current_price
 
                 if dist <= proximity:
                     ob_mid = (float(c["open"]) + float(c["close"])) / 2
-                    mitigated = any(float(fc["close"]) < ob_mid for fc in candles[i + 1:])
+                    mitigated = any(float(fc.get("close", 0)) < ob_mid for fc in candles[i + 1:])
                         
                     
                     if not mitigated:
                         results.append({
                             "type": "bullish",
-                            "top":    round(c["high"], 5),
-                            "bottom": round(c["low"],  5),
+                            "top":    round(c.get("high", 0), 5),
+                            "bottom": round(c.get("low",  0), 5),
                             "dist":   dist,
                             "time":   c.get("time", 0),
                         })
 
         # ── Bearish OB: bullish candle followed by impulsive move down ───
-        if c["close"] > c["open"]:
+        if c.get("close", 0) > c.get("open", 0):
             slice_fwd = candles[i + 1: min(i + 6, n)]
-            future_low = min((x["close"] for x in slice_fwd), default=float("inf"))
+            future_low = min((x.get("close", 0) for x in slice_fwd), default=float("inf"))
 
-            if future_low < c["low"] and (c["high"] - c["low"]) >= min_size:
-                break_candle = max(slice_fwd, key=lambda x: x["high"] - x["low"], default=None)
+            if future_low < c.get("low", 0) and (c.get("high", 0) - c.get("low", 0)) >= min_size:
+                break_candle = max(slice_fwd, key=lambda x: x.get("high", 0) - x.get("low", 0), default=None)
                 has_displacement = (
                     avg_range > 0 and break_candle is not None and
-                    (break_candle["high"] - break_candle["low"]) >= 1.5 * avg_range
+                    (break_candle.get("high", 0) - break_candle.get("low", 0)) >= 1.5 * avg_range
                 )
                 if not has_displacement:
                     continue
 
-                center = (c["high"] + c["low"]) / 2
+                center = (c.get("high", 0) + c.get("low", 0)) / 2
                 dist   = abs(center - current_price) / current_price
 
                 if dist <= proximity:
                     ob_mid = (float(c["open"]) + float(c["close"])) / 2
-                    mitigated = any(float(fc["close"]) > ob_mid for fc in candles[i + 1:])
+                    mitigated = any(float(fc.get("close", 0)) > ob_mid for fc in candles[i + 1:])
                         
                     
                     if not mitigated:
                         results.append({
                             "type": "bearish",
-                            "top":    round(c["high"], 5),
-                            "bottom": round(c["low"],  5),
+                            "top":    round(c.get("high", 0), 5),
+                            "bottom": round(c.get("low",  0), 5),
                             "dist":   dist,
                             "time":   c.get("time", 0),
                         })
@@ -183,13 +183,13 @@ def detect_fvgs(candles: list, current_price: float, symbol: str = "") -> list:
         next_ = candles[i + 1]
 
         # Bullish FVG: gap up (next low > prev high)
-        b_top    = next_["low"]
-        b_bottom = prev["high"]
+        b_top    = next_.get("low", 0)
+        b_bottom = prev.get("high", 0)
         if b_top > b_bottom and (b_top - b_bottom) >= min_gap:
             center = (b_top + b_bottom) / 2
             dist   = abs(center - current_price) / current_price
             if dist <= proximity:
-                mitigated = any(fc["close"] <= b_bottom for fc in candles[i + 2:])
+                mitigated = any(fc.get("close", 0) <= b_bottom for fc in candles[i + 2:])
                 if not mitigated:
                     results.append({
                         "type": "bullish",
@@ -199,13 +199,13 @@ def detect_fvgs(candles: list, current_price: float, symbol: str = "") -> list:
                     })
 
         # Bearish FVG: gap down (next high < prev low)
-        d_top    = prev["low"]
-        d_bottom = next_["high"]
+        d_top    = prev.get("low", 0)
+        d_bottom = next_.get("high", 0)
         if d_top > d_bottom and (d_top - d_bottom) >= min_gap:
             center = (d_top + d_bottom) / 2
             dist   = abs(center - current_price) / current_price
             if dist <= proximity:
-                mitigated = any(fc["close"] >= d_top for fc in candles[i + 2:])
+                mitigated = any(fc.get("close", 0) >= d_top for fc in candles[i + 2:])
                 if not mitigated:
                     results.append({
                         "type": "bearish",
@@ -397,8 +397,8 @@ def check(state: dict, debug: bool = False) -> dict | None:
         candle = next((c for c in candles_5m if c.get("time") == conf_choch.get("time")), None)
         body_ok = True
         if candle:
-            rng  = candle["high"] - candle["low"]
-            body = abs(candle["close"] - candle["open"])
+            rng  = candle.get("high", 0) - candle.get("low", 0)
+            body = abs(candle.get("close", 0) - candle.get("open", 0))
             body_ok = rng > 0 and (body / rng) >= 0.50
         if body_ok:
             confirm_score = 20
@@ -410,8 +410,8 @@ def check(state: dict, debug: bool = False) -> dict | None:
         candle = next((c for c in candles_5m if c.get("time") == conf_bos.get("time")), None)
         body_ok = True
         if candle:
-            rng  = candle["high"] - candle["low"]
-            body = abs(candle["close"] - candle["open"])
+            rng  = candle.get("high", 0) - candle.get("low", 0)
+            body = abs(candle.get("close", 0) - candle.get("open", 0))
             body_ok = rng > 0 and (body / rng) >= 0.60
         if body_ok:
             confirm_score = 10

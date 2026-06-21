@@ -96,8 +96,8 @@ def _session_is_active(candles_5m: list) -> bool:
     if len(candles_5m) < 30:
         return True  # not enough data to judge — allow through
 
-    recent_ranges   = [c["high"] - c["low"] for c in candles_5m[-10:]]
-    baseline_ranges = [c["high"] - c["low"] for c in candles_5m[-30:-10]]
+    recent_ranges   = [c.get("high", 0) - c.get("low", 0) for c in candles_5m[-10:]]
+    baseline_ranges = [c.get("high", 0) - c.get("low", 0) for c in candles_5m[-30:-10]]
 
     avg_recent   = sum(recent_ranges)   / len(recent_ranges)
     avg_baseline = sum(baseline_ranges) / len(baseline_ranges)
