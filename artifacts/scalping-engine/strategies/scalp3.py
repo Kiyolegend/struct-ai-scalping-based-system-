@@ -97,7 +97,7 @@ def detect_order_blocks(candles: list, current_price: float, symbol: str = "") -
                 dist   = abs(center - current_price) / current_price
 
                 if dist <= proximity:
-                    ob_mid = (float(c["open"]) + float(c["close"])) / 2
+                    ob_mid = (float(c.get("open", 0)) + float(c.get("close", 0))) / 2
                     mitigated = any(float(fc.get("close", 0)) < ob_mid for fc in candles[i + 1:])
                         
                     
@@ -128,7 +128,7 @@ def detect_order_blocks(candles: list, current_price: float, symbol: str = "") -
                 dist   = abs(center - current_price) / current_price
 
                 if dist <= proximity:
-                    ob_mid = (float(c["open"]) + float(c["close"])) / 2
+                    ob_mid = (float(c.get("open", 0)) + float(c.get("close", 0))) / 2
                     mitigated = any(float(fc.get("close", 0)) > ob_mid for fc in candles[i + 1:])
                         
                     
