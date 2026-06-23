@@ -191,7 +191,7 @@ def _near_key_level(price: float, state: dict, pip: float,
 
 
 def _in_zone(price: float, state: dict, pip: float,
-             threshold_pips: float = 10.0) -> bool:
+             threshold_pips: float = 10.0, direction: str = "") -> bool:
     """Returns True if price is inside a supply/demand zone."""
     threshold = threshold_pips * pip
     for tf in ("5m", "15m"):
@@ -206,7 +206,13 @@ def _in_zone(price: float, state: dict, pip: float,
             if top == 0 and bottom == 0:
                 continue
             if (bottom - threshold) <= price <= (top + threshold):
-                return True
+                center = zone.get("center", (top + bottom) / 2)
+                if direction == "bullish" and price <= center + threshold:
+                    return True
+                if direction == "bearish" and price >= center - threshold:
+                    return True
+                if not direction:
+                    return True
     return False
 
 def _structure_holds(candles_5m: list, confirm_time: int, direction: str) -> bool:
@@ -358,7 +364,7 @@ def check(state: dict, debug: bool = False) -> dict | None:
         print(f"    [S5] Asian sweep detected — +{sweep_bonus} bonus")
 
     # ── Step 8: Zone confluence bonus ─────────────────────────────────────
-    in_zone_ok = _in_zone(price, state, pip, threshold_pips=10.0)
+    in_zone_ok = _in_zone(price, state, pip, threshold_pips=10.0, direction=direction)
     zone_bonus = 10 if in_zone_ok else 0
 
     # ── Total score ───────────────────────────────────────────────────────
