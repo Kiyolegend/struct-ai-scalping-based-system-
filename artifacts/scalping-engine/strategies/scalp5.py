@@ -282,6 +282,12 @@ def check(state: dict, debug: bool = False) -> dict | None:
         if debug:
             print(f"    [S5] skip: 4H {b4h} actively opposes {direction} — counter-HTF rejected")
         return None
+    
+    # ── D1 macro filter — skip if daily trend opposes session direction ───
+    b_d1 = bias.get("d1", "neutral")
+    if b_d1 != "neutral" and b_d1 != direction:
+        if debug: print(f"    [S5] skip: D1 {b_d1} opposes {direction} — macro trend filter")
+        return None
 
     alignment_bonus = 10 if b4h == direction else 0
 

@@ -138,7 +138,7 @@ def build_state(symbol: str = None) -> dict | None:
 
     
 
-    with ThreadPoolExecutor(max_workers=6) as ex:
+    with ThreadPoolExecutor(max_workers=7) as ex:
         f_bias = ex.submit(_get, "mtf-bias",   {"symbol": sym})
         f_5m   = ex.submit(_analysis, "5m",  300, sym)
         f_15m  = ex.submit(_analysis, "15m", 150, sym)
