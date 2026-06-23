@@ -359,6 +359,12 @@ def check(state: dict, debug: bool = False) -> dict | None:
     if direction == "bearish" and b1h == "bullish":
         if debug: print("    [S6] skip: 1H bullish contradicts SELL at Asian high")
         return None
+    
+    # ── D1 macro filter ───────────────────────────────────────────────────
+    b_d1 = bias.get("d1", "neutral")
+    if b_d1 != "neutral" and b_d1 != direction:
+        if debug: print(f"    [S6] skip: D1 {b_d1} opposes {direction} — macro trend filter")
+        return None
 
     align_score = 20 if (
         (direction == "bullish" and b1h == "bullish") or

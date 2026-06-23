@@ -298,6 +298,12 @@ def check(state: dict, debug: bool = False) -> dict | None:
     else:
         direction   = "bullish" if b4h == "bullish" else "bearish"
         align_score = 15
+    
+    # ── D1 macro filter ───────────────────────────────────────────────────
+    b_d1 = bias.get("d1", "neutral")
+    if b_d1 != "neutral" and b_d1 != direction:
+        if debug: print(f"    [S3] skip: D1 {b_d1} opposes {direction} — macro trend filter")
+        return None
 
     trade_type = "BUY" if direction == "bullish" else "SELL"
     symbol     = state.get("symbol", "")
