@@ -90,6 +90,7 @@ def sanitize_state(state: dict) -> dict | None:
         "4h":  bias.get("4h")  or "neutral",
         "1h":  bias.get("1h")  or "neutral",
         "15m": bias.get("15m") or "neutral",
+        "d1":  bias.get("d1")  or "neutral", 
     }
 
     for tf in ("5m", "15m", "1h", "4h"):
@@ -143,6 +144,7 @@ def build_state(symbol: str = None) -> dict | None:
         f_15m  = ex.submit(_analysis, "15m", 150, sym)
         f_1h   = ex.submit(_analysis, "1h",  150, sym)
         f_4h   = ex.submit(_analysis, "4h",  100, sym)
+        f_d1   = ex.submit(_analysis, "d1",   30, sym)
         f_sr   = ex.submit(_get, "sr-levels", {"symbol": sym, "outputsize": 300})
 
         bias = f_bias.result()
@@ -150,6 +152,7 @@ def build_state(symbol: str = None) -> dict | None:
         a15m = f_15m.result()
         a1h  = f_1h.result()
         a4h  = f_4h.result()
+        a_d1 = f_d1.result()
         sr   = f_sr.result()
 
     if not all([bias, a5m, a15m, a1h, a4h, sr]):
@@ -190,6 +193,7 @@ def build_state(symbol: str = None) -> dict | None:
     bias_15m = bias.get("bias_15m", {}).get("trend") or "neutral"
     bias_1h  = bias.get("bias_1h",  {}).get("trend") or "neutral"
     bias_4h  = bias.get("bias_4h",  {}).get("trend") or "neutral"
+    bias_d1  = (a_d1.get("trend", {}).get("trend") if a_d1 else None) or "neutral"
 
     print(f"OK  [price={current_price:.3f}  sessions={sessions}  bias=4H:{bias_4h}/1H:{bias_1h}/15M:{bias_15m}]")
 
@@ -203,6 +207,7 @@ def build_state(symbol: str = None) -> dict | None:
             "15m": bias_15m,
             "1h":  bias_1h,
             "4h":  bias_4h,
+            "d1":  bias_d1,
         },
         "5m": {
             "trend":     a5m.get("trend", {}).get("trend", "neutral"),

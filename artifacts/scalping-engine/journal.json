@@ -1,5 +1,28 @@
 [
   {
+    "id": "53d30803",
+    "timestamp": "2026-06-22 13:00 UTC",
+    "date": "2026-06-22",
+    "mode": "SIM",
+    "symbol": "EUR/USD",
+    "direction": "SELL",
+    "strategy": "Session Open Momentum Scalp",
+    "confidence": 100,
+    "entry": 1.14464,
+    "sl": 1.14666,
+    "tp": 1.14002,
+    "sl_pips": 20.2,
+    "tp_pips": 46.2,
+    "rr": 2.29,
+    "lot": 0.02,
+    "pnl_win": 9.24,
+    "pnl_loss": -4.04,
+    "result": "?",
+    "pnl": null,
+    "reason": "NY open momentum | 1H=bearish 4H=bearish | 5M BOS 1x within 30min | near_level=\u2713 zone=\u2713 no-sweep | Asia H=1.147 L=1.144 | spread=1.0pip netRR=2.02 score=100/110",
+    "auto_monitor": false
+  },
+  {
     "id": "835f8f32",
     "timestamp": "2026-06-12 08:00 UTC",
     "date": "2026-06-12",
