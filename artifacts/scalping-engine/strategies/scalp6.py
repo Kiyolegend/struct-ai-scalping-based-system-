@@ -120,7 +120,7 @@ def _get_asian_range(state: dict) -> tuple:
     Returns (asia_high, asia_low, is_established).
     is_established only when both high+low exist and range is ≥ 5p wide.
     """
-    asia      = state.get("asia_range", {})
+    asia = state.get("asia_range") or {}
     asia_high = asia.get("high")
     asia_low  = asia.get("low")
 
@@ -502,7 +502,7 @@ def check(state: dict, debug: bool = False) -> dict | None:
         "entry":       round(price, 5),
         "sl":          round(sl,    5),
         "tp":          round(tp,    5),
-        "rr":          config.TARGET_RR,
+        "rr": round(abs(tp - price) / sl_dist, 2) if sl_dist > 0 else config.TARGET_RR,
         "net_rr":      net_rr,
         "spread_pips": spread_pips,
         "total_cost_pips":  total_cost_pips,

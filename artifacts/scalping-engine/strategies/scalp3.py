@@ -483,7 +483,7 @@ def check(state: dict, debug: bool = False) -> dict | None:
     tp   = _fib if _fib is not None else (
                (price + sl_dist * config.TARGET_RR) if direction == "bullish"
                else (price - sl_dist * config.TARGET_RR))
-    rr    = round(config.TARGET_RR, 2)
+    rr = round(abs(tp - price) / sl_dist, 2) if sl_dist > 0 else config.TARGET_RR
     sl    = round(sl, 5)
     tp    = round(tp, 5)
 

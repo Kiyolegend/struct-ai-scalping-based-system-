@@ -42,7 +42,11 @@ Guards added (ChatGPT feedback):
 
 import sys, os, math, time as _time
 from datetime import datetime, timezone
-from zoneinfo import ZoneInfo
+try:
+    from zoneinfo import ZoneInfo
+    _HAS_ZONEINFO = True
+except ImportError:
+    _HAS_ZONEINFO = False
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import config
 
@@ -374,8 +378,8 @@ def check(state: dict, debug: bool = False) -> dict | None:
 
     effective_min = max(80, config.MIN_CONFIDENCE)
     if total_score < effective_min:
-       print(f"    [S5] skip: score {total_score} < {effective_min} (S5_MIN=80, MIN_CONFIDENCE={config.MIN_CONFIDENCE})")
-       return None
+        print(f"    [S5] skip: score {total_score} < {effective_min} (S5_MIN=80, MIN_CONFIDENCE={config.MIN_CONFIDENCE})")
+        return None
 
     # ── SL / TP ───────────────────────────────────────────────────────────
     buf         = config.SL_BUFFER_PIPS * pip
@@ -424,7 +428,7 @@ def check(state: dict, debug: bool = False) -> dict | None:
     tp   = _fib if _fib is not None else (
                (price + sl_dist * config.TARGET_RR) if direction == "bullish"
                else (price - sl_dist * config.TARGET_RR))
-    rr      = round(config.TARGET_RR, 2)
+    rr = round(abs(tp - price) / sl_dist, 2) if sl_dist > 0 else config.TARGET_RR
     sl      = round(sl, 5)
     tp      = round(tp, 5)
 
