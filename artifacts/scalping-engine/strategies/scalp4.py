@@ -563,7 +563,7 @@ def check(state: dict, debug: bool = False) -> dict | None:
             return None
 
     sl_dist = abs(price - sl)
-    _fib = config.fib_extension_tp(state, htf_direction, price)
+    _fib = config.scalp_extension_tp(state, htf_direction, price, sl_dist)
     tp   = _fib if _fib is not None else (
                (price + sl_dist * config.TARGET_RR) if htf_direction == "bullish"
                else (price - sl_dist * config.TARGET_RR))
