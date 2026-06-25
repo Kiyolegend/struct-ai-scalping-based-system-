@@ -157,3 +157,26 @@ def fib_extension_tp(state: dict, direction: str, entry: float) -> float | None:
         return round(tp, 5)
     except Exception:
         return None
+    
+
+
+# ADD THESE at the bottom of config.py:
+
+SCALP_MAX_RR = 3.0   # fib TP capped at 3× SL distance for scalping
+
+def scalp_extension_tp(
+    state: dict, direction: str, entry: float, sl_dist: float
+) -> float | None:
+    """
+    Fib extension TP capped at SCALP_MAX_RR × SL distance.
+    Returns None if fib target is too far — caller falls back to TARGET_RR × SL.
+    Use this in all SC1–SC6 strategies instead of fib_extension_tp().
+    """
+    if sl_dist <= 0:
+        return None
+    _fib = fib_extension_tp(state, direction, entry)
+    if _fib is None:
+        return None
+    if abs(_fib - entry) / sl_dist > SCALP_MAX_RR:
+        return None
+    return _fib
